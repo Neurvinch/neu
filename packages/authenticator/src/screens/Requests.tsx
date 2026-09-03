@@ -201,6 +201,17 @@ function RequestCard({
         ))}
       </dl>
 
+      {request.warnings.length > 0 ? (
+        <div className="banner warn" style={{ marginBottom: 12 }}>
+          <div className="big">Worth a second look</div>
+          <ul className="warnlist">
+            {request.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="banner info" style={{ marginBottom: 0 }}>
         <div className="big">Did you ask for this?</div>
         <p>
