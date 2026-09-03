@@ -26,11 +26,16 @@ import {
   approve,
   approveEnrollment,
   approveEnrollments,
+  captureEvidence,
   composeIntent,
+  confirmChallenge,
   decline,
+  denyChallenge,
   enroll,
   fmt,
   fulfil,
+  lookupClaim,
+  raiseChallenge,
   requestIntent,
   submitIntent,
   type ApiError,
@@ -482,13 +487,189 @@ async function main() {
   );
 
   /* =======================================================================
-   * Act 4 -- the window closing
+   * Act 4 -- the deepfaked call
+   *
+   * The attack the whole project is named for, aimed at the two places it can
+   * still land: an employee who has nothing to do, and an approver who has a
+   * real escrow in front of them. Neither is asked to spot a fake.
+   * ===================================================================== */
+  fmt.head('Act 4 -- the deepfaked call');
+
+  // The employee is on a video call with a flawless copy of the CFO.
+  const challenge = await mustPass(
+    'Employee challenges the caller instead of judging the video',
+    () =>
+      raiseChallenge(
+        employee,
+        cfo.id,
+        'VIDEO',
+        'Wire 42L to a new account before the bank closes',
+      ),
+  );
+  const raisedChallenge = challenge as Awaited<ReturnType<typeof raiseChallenge>>;
+  fmt.info(`code ${raisedChallenge.code} -- shown to the employee and on the CFO device only`);
+
+  assert(
+    'The code is a readable six characters, no ambiguous glyphs',
+    /^[ABCDEFGHJKLMNPQRTUVWXY2346789]{3}-[ABCDEFGHJKLMNPQRTUVWXY2346789]{3}$/.test(
+      raisedChallenge.code,
+    ),
+    raisedChallenge.code,
+  );
+
+  // Anyone else looking at this challenge sees that it exists, not the answer.
+  const asOutsider = await api<{ code: string }>(
+    `/api/caller-challenges/${raisedChallenge.id}`,
+    { token: cto.token },
+  );
+  assert(
+    'A third party cannot read the challenge code',
+    asOutsider.code === '···-···',
+    asOutsider.code,
+  );
+
+  const denied = await mustPass('The real CFO taps "that is not me"', () =>
+    denyChallenge(cfo, raisedChallenge.id),
+  );
+  assert(
+    'The challenge records an active impersonation',
+    (denied as { state: string }).state === 'DENIED',
+  );
+
+  // The whole point: the next payment this CFO originates is now CRITICAL,
+  // because we know someone was impersonating her minutes ago.
+  const afterImpersonation = composeIntent(cfo, {
+    org_id: 'acme-corp',
+    type: 'wire_transfer',
+    payee: { name: 'Alton Logistics Pvt Ltd', account: '50100234564419', ifsc: 'HDFC0001234' },
+    amount: { value: '150000.00', currency: 'INR' },
+    purpose: 'Routine settlement during an active impersonation',
+    deadline: inHours(24),
+  });
+  const flaggedRequest = await requestIntent(cfo, afterImpersonation.intent);
+  assert(
+    'Her signing device is warned that she was just impersonated',
+    flaggedRequest.warnings.some((w) => /impersonat/i.test(w)),
+    flaggedRequest.warnings.join(' | '),
+  );
+  await fulfil(cfo, flaggedRequest);
+  const flaggedEscrow = await api<{ risk: { tier: string; rules_fired: string[] } }>(
+    `/api/intents/${afterImpersonation.intent.txn_id}/accept`,
+    { method: 'POST', token: employee.token },
+  );
+  assert(
+    'A known-good payee at a small amount is still CRITICAL during an impersonation',
+    flaggedEscrow.risk.tier === 'CRITICAL' &&
+      flaggedEscrow.risk.rules_fired.includes('ACTIVE_IMPERSONATION'),
+    `${flaggedEscrow.risk.tier}: ${flaggedEscrow.risk.rules_fired.join(', ')}`,
+  );
+
+  // Now the sharp end: an approver with a genuine escrow in front of them,
+  // being talked through it by the same fake.
+  const pressured = composeIntent(cfo, {
+    org_id: 'acme-corp',
+    type: 'wire_transfer',
+    payee: { name: 'Zenith Trade Co', account: '77770001111', ifsc: 'UTIB0000123' },
+    amount: { value: '3100000.00', currency: 'INR' },
+    purpose: 'Urgent supplier settlement',
+    deadline: inHours(3),
+  });
+  await submitIntent(cfo, pressured.intent);
+  const pressuredEscrow = await api<{ escrow_id: string }>(
+    `/api/intents/${pressured.intent.txn_id}/accept`,
+    { method: 'POST', token: employee.token },
+  );
+
+  const approverChallenge = await raiseChallenge(
+    ceo,
+    cfo.id,
+    'VIDEO',
+    `Approve ${pressured.intent.txn_id} right now`,
+    { txn_id: pressured.intent.txn_id, escrow_id: pressuredEscrow.escrow_id },
+  );
+  fmt.step('CEO is being talked through an approval by "the CFO" on video; he challenges her');
+  await denyChallenge(cfo, approverChallenge.id);
+
+  const voided = await api<{ state: string }>(
+    `/api/escrows/${pressuredEscrow.escrow_id}`,
+    { token: ceo.token },
+  );
+  assert(
+    'Denying the caller voids the escrow that call was pushing for',
+    voided.state === 'EXPIRED',
+    voided.state,
+  );
+
+  await mustFail(
+    'The approver approves anyway, after the denial',
+    'ESCROW_NOT_PENDING',
+    () => approve(ceo, pressuredEscrow.escrow_id),
+  );
+
+  // A genuine call still works, and costs one signature.
+  const genuine = await raiseChallenge(treasury, cfo.id, 'PHONE', 'Checking a vendor detail');
+  const confirmed = await mustPass('A genuine call is confirmed, signed on the CFO device', () =>
+    confirmChallenge(cfo, genuine.id),
+  );
+  assert(
+    'The confirmation is attested by a key, not just a session',
+    (confirmed as { attested: boolean }).attested === true,
+  );
+
+  /* =======================================================================
+   * Act 4b -- what the browser extension asks
+   * ===================================================================== */
+  fmt.head('Act 4b -- the browser extension, from inside the chat window');
+
+  const bogus = await lookupClaim(employee, 'TX-NOTREAL');
+  assert(
+    'A forwarded "already approved" claim with no ledger entry is exposed',
+    !bogus.exists && !bogus.authorized && bogus.verdict === 'NO_SUCH_AUTHORIZATION',
+    bogus.verdict,
+  );
+  fmt.info(bogus.headline);
+
+  const real = await lookupClaim(employee, legit.intent.txn_id);
+  assert(
+    'A genuine settled payment is confirmed as settled',
+    real.exists && real.verdict === 'EXECUTED',
+    real.verdict,
+  );
+
+  const evidence = await mustPass(
+    'A voice note from WhatsApp is hashed locally and chained as evidence',
+    () =>
+      captureEvidence(employee, {
+        platform: 'WhatsApp Web',
+        url: 'https://web.whatsapp.com/',
+        sender: '+91 90000 00000',
+        kind: 'AUDIO',
+        excerpt: 'Voice note demanding an urgent transfer',
+        media_sha256: 'b'.repeat(64),
+        media_bytes: 184320,
+      }),
+  );
+  fmt.info(`chained at entry #${(evidence as { seq: number }).seq} -- the audio itself never moved`);
+
+  await mustFail(
+    'Evidence with a malformed media digest is refused',
+    'BAD_MEDIA_DIGEST',
+    () =>
+      captureEvidence(employee, {
+        platform: 'WhatsApp Web',
+        kind: 'AUDIO',
+        media_sha256: 'not-a-digest',
+      }),
+  );
+
+  /* =======================================================================
+   * Act 5 -- the window closing
    * ===================================================================== */
   const policy = await api<{ demo_window_seconds: number | null }>('/api/policy');
   const demoWindow = policy.demo_window_seconds;
 
   if (demoWindow !== null && demoWindow <= 30) {
-    fmt.head(`Act 4 -- the window closing (${demoWindow}s demo window)`);
+    fmt.head(`Act 5 -- the window closing (${demoWindow}s demo window)`);
 
     const doomed = composeIntent(cfo, {
       org_id: 'acme-corp',
@@ -554,16 +735,16 @@ async function main() {
       failures++;
     }
   } else {
-    fmt.head('Act 4 -- the window closing (skipped)');
+    fmt.head('Act 5 -- the window closing (skipped)');
     fmt.warn(
       'Start the server with SEAL_DEMO_WINDOW_SECONDS=8 to exercise the expiry path in seconds.',
     );
   }
 
   /* =======================================================================
-   * Act 5 -- the receipt
+   * Act 6 -- the receipt
    * ===================================================================== */
-  fmt.head('Act 5 -- the audit chain');
+  fmt.head('Act 6 -- the audit chain');
 
   const verify = await api<{ ok: boolean; entries_checked: number; break_at_seq: number | null }>(
     `/api/audit/${legit.intent.txn_id}/verify`,
