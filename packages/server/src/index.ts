@@ -4,6 +4,7 @@ import { heartbeat } from './events.js';
 import { publishKeyDirectory } from './keydir.js';
 import { sweepExpired } from './core/service.js';
 import { sweepSigningRequests } from './core/signing-requests.js';
+import { sweepChallenges } from './core/caller.js';
 import { seed } from './seed.js';
 
 seed();
@@ -26,6 +27,8 @@ setInterval(() => {
     if (n > 0) console.log(`[seal] expired ${n} escrow(s)`);
     const sigs = sweepSigningRequests();
     if (sigs > 0) console.log(`[seal] expired ${sigs} signing request(s)`);
+    const calls = sweepChallenges();
+    if (calls > 0) console.log(`[seal] expired ${calls} caller challenge(s)`);
   } catch (e) {
     console.error('[seal] sweep failed', e);
   }
