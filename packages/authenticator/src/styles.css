@@ -1,0 +1,405 @@
+/* ---------------------------------------------------------------------------
+   SEAL Authenticator
+   A phone, not a console. One thing on screen at a time, the real fields large
+   enough to actually read, and approve/decline far enough apart that nobody
+   taps the wrong one while being hurried on a phone call.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --bg: #07090d;
+  --panel: #11161f;
+  --panel-2: #161d29;
+  --line: #232c3d;
+  --text: #e9eef8;
+  --muted: #8c9ab6;
+  --dim: #5f6c85;
+
+  --ok: #38d39f;
+  --ok-bg: rgba(56, 211, 159, 0.1);
+  --ok-line: rgba(56, 211, 159, 0.4);
+  --warn: #f0b429;
+  --warn-bg: rgba(240, 180, 41, 0.1);
+  --warn-line: rgba(240, 180, 41, 0.4);
+  --bad: #ff6b6b;
+  --bad-bg: rgba(255, 107, 107, 0.1);
+  --bad-line: rgba(255, 107, 107, 0.4);
+  --accent: #6aa8ff;
+
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #05070a;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* --- the phone ------------------------------------------------------------ */
+
+.phone {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.bar .mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(140deg, var(--ok), var(--accent));
+  display: grid;
+  place-items: center;
+  color: #04150f;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.bar .who {
+  margin-left: auto;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.body {
+  padding: 16px;
+  flex: 1;
+}
+
+h1 {
+  font-size: 19px;
+  margin: 0 0 6px;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+
+p {
+  color: var(--muted);
+}
+
+.dim {
+  color: var(--dim);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.card.request {
+  border-color: var(--warn-line);
+  background: linear-gradient(180deg, var(--warn-bg), transparent 60%), var(--panel);
+}
+
+.card.dead {
+  opacity: 0.55;
+}
+
+/* The money line has to be unmissable: it is the number people get wrong when
+   somebody is talking urgently in their ear. */
+.headline {
+  font-size: 30px;
+  font-family: var(--mono);
+  letter-spacing: -0.01em;
+  margin: 4px 0 2px;
+}
+
+.payee {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 8px 12px;
+  margin: 14px 0;
+  font-size: 14px;
+}
+
+.facts dt {
+  color: var(--dim);
+  font-size: 12px;
+  padding-top: 2px;
+}
+
+.facts dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.badge.ok {
+  color: var(--ok);
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+}
+.badge.warn {
+  color: var(--warn);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+.badge.bad {
+  color: var(--bad);
+  border-color: var(--bad-line);
+  background: var(--bad-bg);
+}
+
+.banner {
+  border: 1px solid;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+
+.banner .big {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 3px;
+}
+
+.banner p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.banner.ok {
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.banner.warn {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.banner.bad {
+  border-color: var(--bad-line);
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.banner.info {
+  border-color: rgba(106, 168, 255, 0.35);
+  background: rgba(106, 168, 255, 0.1);
+  color: var(--accent);
+}
+
+label.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+label.field .lbl {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+input,
+select {
+  width: 100%;
+  background: #0a0e14;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 13px 13px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+.btn {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.good {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #04150f;
+}
+
+.btn.danger {
+  background: transparent;
+  border-color: var(--bad-line);
+  color: var(--bad);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #05101f;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.btn.sm {
+  padding: 9px 12px;
+  font-size: 13px;
+  width: auto;
+}
+
+/* Approve and decline are separated on purpose. A hurried thumb should not be
+   able to slide from one to the other. */
+.actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.people {
+  display: grid;
+  gap: 8px;
+}
+
+.person {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.person.on {
+  border-color: var(--accent);
+  background: rgba(106, 168, 255, 0.1);
+}
+
+.person .r {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 34px 18px;
+  text-align: center;
+  color: var(--dim);
+}
+
+.error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--warn);
+}
+
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.hashline {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  word-break: break-all;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
