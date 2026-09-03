@@ -419,7 +419,7 @@ export function quorumStatus(escrowId: string) {
  * so it is never deleted.
  * ========================================================================= */
 
-export function expireEscrow(escrow: EscrowRow): void {
+export function expireEscrow(escrow: EscrowRow, reason = 'WINDOW_CLOSED'): void {
   if (escrow.state !== 'PENDING_QUORUM') return;
   tx(() => {
     db.prepare(`UPDATE escrows SET state = 'EXPIRED', closed_at = ? WHERE escrow_id = ?`).run(
@@ -435,7 +435,8 @@ export function expireEscrow(escrow: EscrowRow): void {
         escrow_id: escrow.escrow_id,
         approvals_collected: approvalsFor(escrow.escrow_id).length,
         required: escrow.required_approvals,
-        alert: 'CFO_NOTIFIED',
+        reason,
+        alert: reason === 'WINDOW_CLOSED' ? 'CFO_NOTIFIED' : 'ACTIVE_IMPERSONATION',
         retained: true,
       },
     });
