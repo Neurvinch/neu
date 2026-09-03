@@ -31,7 +31,7 @@ Open the **console** at <http://localhost:5173> and the **SEAL Authenticator** a
 point. Every seeded account uses the password `demo`.
 
 ```bash
-npm run sim         # end-to-end walkthrough + 32-check attack suite
+npm run sim         # end-to-end walkthrough + 51-check attack suite
 npm run check       # the device credential code, exercised headlessly
 npm run reset       # wipe the database, the ledger, the key directory
 ```
@@ -80,6 +80,99 @@ So the compromised-console attack becomes survivable rather than fatal. Malware 
 can compose whatever it likes; every attempt surfaces on the real executive's phone showing a payee
 they have never heard of, and dies there — with the refusal written into the audit chain as
 `SIGNING_DECLINED`.
+
+---
+
+## When the deepfake is standing right there
+
+Signatures settle whether a *transaction* is genuine. They do nothing for the human sitting in front
+of a screen while a perfect copy of their CFO's face and voice tells them to hurry up — and that
+human still has a decision to make. Two places in this system still have one:
+
+- **the employee**, whose queue is empty, but who is being shouted at
+- **the approver**, who has a real escrow open and is being told "approve it, I just signed it" —
+  the dangerous one, because there is something to push against
+
+Neither is asked to judge whether the video looks real. Nobody can do that reliably, and the problem
+statement says so. They are given a question the fake cannot answer.
+
+### The caller challenge
+
+One click, from anywhere in the console or the browser extension: *someone is pressuring me*. Pick
+who they claim to be. A six-character code appears — on your screen and on that executive's enrolled
+device, **nowhere else**, never on the channel the caller is using.
+
+> "Before I do anything — open your SEAL app and read me the code."
+
+An impersonator has the face and the voice. They do not have the phone in that person's pocket.
+Expect the excuses the interface names for you in advance: *I'm driving*, *my phone is dead*,
+*there's no time*, *just do it, I'll approve it after*. A real executive reads six characters.
+
+The reverse direction needs no cleverness from anybody and is usually what fires first. The real
+executive's device asks: **"Are you on a video call with Aravind right now?"** Deny is one tap, needs
+no signature, and is the biggest button on the screen — under pressure, the button your thumb lands
+on should be the safe one. Confirming is the one that costs a signature, because it is the positive
+claim.
+
+Denying does four things at once:
+
+1. **voids the escrow that call was pushing for** — a genuine payment can be raised again in a
+   minute; the fraudulent one gets no second chance
+2. **alerts every console in the org**, live
+3. **chains it** as `CALLER_DENIED`, with the channel, the demand and who was targeted
+4. **raises the risk tier on everything that executive originates for 24 hours** —
+   `ACTIVE_IMPERSONATION` is worth +45 and floors the tier at CRITICAL, so even a routine ₹1.5L
+   payment to a known vendor now needs three signatures including the treasury head
+
+That last one is the point. An impersonation is a fact about the world right now, not a property of
+one payment, and it should colour everything that person touches until it is understood.
+
+Silence is not a pass either: an unanswered challenge expires as unverified and still carries a risk
+premium.
+
+### The prompt itself argues back
+
+The signing device no longer just shows fields. The server computes what is *unusual* and the phone
+says it in words, so nobody has to hold a vendor master in their head while being talked at:
+
+> **Worth a second look**
+> · This account is not in your vendor master. It has never been paid before.
+> · The deadline is under four hours away. Urgency is the most common lever in this attack.
+> · Someone was impersonating you recently. Be especially careful with this one.
+
+---
+
+## The browser extension
+
+The attack does not arrive in the console. It arrives in WhatsApp Web, in a mail tab, in a meeting
+window. So there is an unpacked MV3 extension in `packages/extension` that puts the ledger where the
+message lands.
+
+**Load it:** Chrome → `chrome://extensions` → Developer mode → *Load unpacked* → select
+`packages/extension`. Sign in through its popup; set the server under *Options* if SEAL is not on
+`localhost:4000`.
+
+It is **not a deepfake detector**, and it never scores a face or a voice. It answers three questions
+that have crisp answers:
+
+| Question | How |
+|---|---|
+| *Is this payment actually authorized?* | Right-click a message → the ledger answers. Usually: **no such authorization exists**. |
+| *Is this really the CFO?* | One click raises a caller challenge without leaving the chat. |
+| *Can we prove this arrived?* | Right-click a voice note or video → hashed **locally**, digest chained as evidence. The media never leaves the machine. |
+
+The passive badge it injects is honest about what it detected. It matches *payment-instruction
+language* — an IFSC pattern next to a rupee figure, "wire", "beneficiary", "before EOD" — which is a
+boring, reliable text match. It never claims a message is fake:
+
+> **SEAL** · Payment instructions **plus urgency** — the exact shape of this attack.
+> `[Check TX-4A2B1C]` `[Verify the sender]`
+
+Evidence capture answers the problem statement's complaint about fragmentation directly: telephony
+and chat context normally live in a different system from the payment record and only get correlated
+after an incident. Here the claim *"someone sent me this voice note demanding a transfer"* becomes an
+entry in the same hash chain as the payment, at the moment it happens, with the platform, the sender
+handle, the URL and the media digest.
 
 ---
 
@@ -177,6 +270,7 @@ packages/server          API, SQLite, risk engine, escrow lifecycle, hash-chaine
 packages/bank            the mock payment rail — the enforcement point, verifies independently
 packages/web             the console (:5173) — composes, never signs
 packages/authenticator   the SEAL Authenticator (:5174) — holds the keys, the only thing that signs
+packages/extension       unpacked MV3 browser extension — the ledger, where the message lands
 scripts/simulate         the walkthrough and the attack suite
 scripts/check-credential the device vault + signer, run headlessly
 ```
@@ -231,9 +325,20 @@ request, and that request lands on the real person's device showing the real fie
 - **A compromised authenticator device** holding a software key can still be drained: the vault is
   copyable and the passphrase is typeable. That is exactly why the hardware tier exists, and why the
   risk engine still charges a premium for software keys.
-- **Prompt fatigue is the real attack on this design.** If a compromised console can spam signature
-  requests, the twentieth one gets waved through. Requests that could never succeed are refused
-  before they are pushed, but rate limiting and per-device request budgets are not built yet.
+- **Prompt fatigue is the real attack on this design.** If a compromised console can spam
+  signature requests or caller challenges, the twentieth one gets waved through. Requests that
+  could never succeed are refused before they are pushed, but rate limiting and per-device
+  request budgets are not built yet.
+- **A caller challenge only helps if someone raises one.** It is one click from every screen where
+  pressure lands, and raising one is free and consequence-less by design — but a person who never
+  asks is not protected by it. Training and the always-visible button are the mitigation; there is
+  no technical one.
+- **The extension's badge is a text match**, so it has false positives and false negatives. That is
+  why it never blocks anything and never says "this is fake" — it only ever offers a check.
+- **Denying a call needs only a session, not a key.** A deliberate asymmetry: denial only ever
+  *stops* things, and making an alarmed person perform a crypto ceremony costs minutes exactly
+  when minutes matter. The worst a hijacked session achieves is voiding a payment that must then
+  be raised again.
 - **Adoption is the real barrier.** This only works where it is enforced at the rail. A partial
   rollout leaves the old path open.
 - **Lost authenticators need a recovery path**, and every recovery path is an attack surface. It must
@@ -252,10 +357,17 @@ request, and that request lands on the real person's device showing the real fie
    own devices; the countdown is live on every screen. The rail settles it.
 3. **The attack.** Play the cloned-voice call demanding an urgent transfer to a different account.
    Let it be convincing.
-4. **The kill, twice over.** The employee opens the console: the queue is empty, and there is no
-   field in which to type the mule account. Then go further — pretend the console itself is
-   compromised, compose the fraudulent payment as the CFO, and watch it appear on the real CFO's
-   phone showing an unfamiliar payee. Decline it.
+4. **The kill, three ways over.**
+   - The employee opens the console: the queue is empty, and there is no field in which to type
+     the mule account.
+   - Pretend the console itself is compromised: compose the fraudulent payment as the CFO and
+     watch it appear on the real CFO's phone showing an unfamiliar payee and *"this account has
+     never been paid before"*. Decline it.
+   - Now the hard case. Let a real escrow exist and have "the CFO" talk the CEO through approving
+     it. The CEO clicks **Verify a caller**, reads out a six-character code, and the fake cannot
+     repeat it. Meanwhile the real CFO's phone asks *"are you on a video call with Rahul right
+     now?"* — she taps **No — that is not me**, the escrow voids on every screen at once, and the
+     next payment she originates comes up CRITICAL.
 5. **The receipt.** Open the Audit tab, hit *Recompute chain*, and show the blocked attempts already
    recorded with their custody tier, their origin lane and the rules that fired.
 
