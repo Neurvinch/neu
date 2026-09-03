@@ -246,9 +246,20 @@ async function main() {
   );
 
   await mustPass('CEO approves on his device', () => approve(ceo, escrow.escrow_id));
-  const final = (await mustPass('CTO approves -- quorum met, payment submitted', () =>
-    approve(cto, escrow.escrow_id),
-  )) as SigningRequest;
+
+  // CRITICAL needs a third signature, and one of them must be the treasury
+  // head. That happens for real whenever this CFO has been impersonated
+  // recently, so the walkthrough follows the tier it is given rather than
+  // assuming two approvals are always enough.
+  let final = (await mustPass('CTO approves', () => approve(cto, escrow.escrow_id))) as SigningRequest;
+  if (escrow.required_approvals > 2) {
+    fmt.info(
+      `tier ${escrow.risk.tier} requires ${escrow.required_approvals} approvals including treasury`,
+    );
+    final = (await mustPass('Treasury head approves -- quorum met, payment submitted', () =>
+      approve(treasury, escrow.escrow_id),
+    )) as SigningRequest;
+  }
 
   const settled = final.result as unknown as {
     state: string;
@@ -429,11 +440,38 @@ async function main() {
     },
   );
 
-  // 10. Straight at the rail with a hand-built bundle. This is the enforcement
+  // 10. A bundle for an escrow that has not reached quorum must not exist at
+  //     all -- it would be a payable artefact for an unapproved payment.
+  await mustFail(
+    'A bundle is requested for an escrow that has not met quorum',
+    'QUORUM_NOT_MET',
+    () => api(`/api/escrows/${esc2.escrow_id}/bundle`, { token: cfo.token }),
+  );
+
+  // 11. Straight at the rail with a hand-built bundle. This is the enforcement
   //     point: SEAL could be bypassed entirely and the money still would not move.
   const settledBundle = await api<ApprovalBundle>(`/api/escrows/${escrow.escrow_id}/bundle`, {
     token: cfo.token,
   });
+
+  // The rail honours the approval count the bundle itself declares, so a
+  // three-signature policy cannot be settled with two by shopping for a rail
+  // with a lower floor.
+  if (
+    await railRefuses(
+      'A bundle stripped down to a single approval',
+      {
+        ...settledBundle,
+        approvals: settledBundle.approvals.slice(0, 1),
+        issued_at: new Date().toISOString(),
+      },
+      'quorum_satisfied',
+    )
+  ) {
+    passes++;
+  } else {
+    failures++;
+  }
 
   if (
     await railRefuses('Forged bundle submitted directly to the payment rail', {
