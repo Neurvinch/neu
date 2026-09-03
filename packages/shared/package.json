@@ -1,0 +1,19 @@
+{
+  "name": "@seal/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./webauthn": "./src/webauthn.ts",
+    "./vault": "./src/vault.ts",
+    "./hardware": "./src/hardware.ts"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.1.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.0"
+  }
+}
