@@ -16,6 +16,32 @@ interface Rule {
   why: string;
 }
 
+/**
+ * Recent impersonation activity around a person.
+ *
+ * A denied caller challenge is the single strongest signal this system can
+ * produce that an attack is in progress *right now*: someone was on a call
+ * claiming to be this executive, and the executive said it was not them.
+ */
+export function impersonationSignal(userId: string, withinMs = 24 * 3600_000) {
+  const since = new Date(Date.now() - withinMs).toISOString();
+  const row = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN state = 'DENIED' THEN 1 ELSE 0 END) AS denied,
+         SUM(CASE WHEN state = 'EXPIRED' THEN 1 ELSE 0 END) AS unanswered,
+         SUM(CASE WHEN state = 'PENDING' THEN 1 ELSE 0 END) AS pending
+       FROM caller_challenges
+       WHERE claimed_user_id = ? AND created_at > ?`,
+    )
+    .get(userId, since) as {
+    denied: number | null;
+    unanswered: number | null;
+    pending: number | null;
+  };
+  return { denied: row.denied ?? 0, unanswered: row.unanswered ?? 0, pending: row.pending ?? 0 };
+}
+
 export interface RiskInput {
   intent: TransactionIntent;
   deviceKind: DeviceKind;
@@ -120,6 +146,28 @@ export function scoreRisk({ intent, deviceKind, now = new Date() }: RiskInput): 
     notes.push('Signed with a hardware-bound credential: the key cannot be exported or copied.');
   }
 
+  // Someone has been impersonating this executive recently. That is a fact
+  // about the world right now, not a property of this payment, and it should
+  // colour every payment they originate until it is understood.
+  const impersonation = impersonationSignal(intent.originator.user_id);
+  if (impersonation.denied > 0) {
+    fired.push({
+      id: 'ACTIVE_IMPERSONATION',
+      weight: 45,
+      why: `${impersonation.denied} caller challenge(s) denied by this executive in the last 24h`,
+    });
+    notes.push(
+      'This executive has told us, from their own device, that someone was impersonating them recently.',
+    );
+  } else if (impersonation.unanswered > 0) {
+    fired.push({
+      id: 'UNANSWERED_CALLER_CHALLENGE',
+      weight: 20,
+      why: `${impersonation.unanswered} caller challenge(s) went unanswered in the last 24h`,
+    });
+    notes.push('A caller claiming to be this executive was challenged and never answered.');
+  }
+
   const score = Math.min(100, fired.reduce((s, r) => s + r.weight, 0));
 
   let tier: RiskTier =
@@ -130,6 +178,11 @@ export function scoreRisk({ intent, deviceKind, now = new Date() }: RiskInput): 
   // Hard floors that a score alone must never undercut.
   if (has('NEW_BENEFICIARY') || has('BENEFICIARY_ACCOUNT_SWAP') || has('VENDOR_IFSC_CHANGED')) {
     tier = rank(tier) < rank('HIGH') ? 'HIGH' : tier;
+  }
+  // A live impersonation outranks any score arithmetic.
+  if (has('ACTIVE_IMPERSONATION')) {
+    tier = 'CRITICAL';
+    notes.push('Someone is impersonating this executive. No fast-track path exists.');
   }
   if ((has('NEW_BENEFICIARY') || has('BENEFICIARY_ACCOUNT_SWAP')) && has('LARGE_AMOUNT') && has('OFF_HOURS')) {
     tier = 'CRITICAL';
