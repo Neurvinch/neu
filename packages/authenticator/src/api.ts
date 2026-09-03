@@ -53,7 +53,13 @@ export function useEvents(onEvent: (type: string, data: unknown) => void) {
 
   useEffect(() => {
     const es = new EventSource('/api/events');
-    const types = ['signing.requested', 'signing.resolved', 'enrollment.changed'];
+    const types = [
+      'signing.requested',
+      'signing.resolved',
+      'enrollment.changed',
+      'caller.raised',
+      'caller.resolved',
+    ];
     const listeners = types.map((t) => {
       const fn = (e: MessageEvent) => handler.current(t, JSON.parse(e.data));
       es.addEventListener(t, fn as EventListener);
