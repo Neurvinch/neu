@@ -266,11 +266,18 @@ async function inspect(bundle: ApprovalBundle): Promise<Check[]> {
     valid++;
   }
 
-  const requiredByRail = amount > toPaise(RAIL_POLICY.DUAL_APPROVAL_ABOVE) ? 2 : 1;
+  // The rail's own floor, and the bundle's own declared requirement, whichever
+  // is stricter. Trusting the bundle *upward* is safe: lowering the number in
+  // it can never get a payment below the rail's independent threshold, and
+  // honouring a higher one means an originating policy that asked for three
+  // signatures cannot be settled with two.
+  const railFloor = amount > toPaise(RAIL_POLICY.DUAL_APPROVAL_ABOVE) ? 2 : 1;
+  const declared = Number(bundle.risk?.required_approvals ?? 0);
+  const required = Math.max(railFloor, Number.isFinite(declared) ? declared : 0);
   add(
     'quorum_satisfied',
-    valid >= requiredByRail,
-    `${valid} valid distinct approval(s), rail requires ${requiredByRail}`,
+    valid >= required,
+    `${valid} valid distinct approval(s); rail floor ${railFloor}, bundle declares ${declared}`,
   );
 
   return checks;
