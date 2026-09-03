@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SEAL</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark">SEAL</span>
+      <span class="sub">authorization check</span>
+      <span class="who" id="who"></span>
+    </header>
+
+    <main id="main">
+      <!-- Signed out ------------------------------------------------------ -->
+      <section id="signin" hidden>
+        <h1>Sign in</h1>
+        <p class="muted">
+          A session lets you look things up and challenge a caller. It cannot authorize a payment —
+          only your enrolled device can do that.
+        </p>
+        <label>Who are you?<select id="user"></select></label>
+        <label>Demo password<input id="password" type="password" value="demo" /></label>
+        <p class="error" id="signin-error" hidden></p>
+        <button class="btn primary" id="do-signin">Sign in</button>
+      </section>
+
+      <!-- Signed in ------------------------------------------------------- -->
+      <section id="app" hidden>
+        <div class="tabs">
+          <button class="tab active" data-tab="verify">Verify a caller</button>
+          <button class="tab" data-tab="lookup">Check a payment</button>
+        </div>
+
+        <!-- The panic path, first and default. --------------------------- -->
+        <div class="pane" data-pane="verify">
+          <div class="callout">
+            You are not being asked to judge whether a video looks real. You are going to ask them
+            something only the real person can answer.
+          </div>
+
+          <label>Who do they claim to be?<select id="claimed"></select></label>
+          <label
+            >How did they reach you?
+            <select id="channel">
+              <option value="VIDEO">Video call</option>
+              <option value="PHONE">Phone call</option>
+              <option value="MEETING">Online meeting</option>
+              <option value="CHAT">Chat / WhatsApp</option>
+              <option value="EMAIL">Email</option>
+              <option value="IN_PERSON">In person</option>
+            </select>
+          </label>
+          <label
+            >What are they asking for?
+            <textarea id="demand" rows="3" placeholder="Wire 42L to a new account before the bank closes"></textarea>
+          </label>
+
+          <p class="error" id="challenge-error" hidden></p>
+          <button class="btn danger" id="do-challenge">Challenge this caller</button>
+
+          <div id="challenge-result" hidden></div>
+        </div>
+
+        <!-- Ledger lookup ------------------------------------------------- -->
+        <div class="pane" data-pane="lookup" hidden>
+          <div class="callout">
+            Someone says a payment was approved. This is what the ledger actually says.
+          </div>
+          <label>Transaction reference<input id="txn" placeholder="TX-4A2B1C" /></label>
+          <button class="btn primary" id="do-lookup">Check the ledger</button>
+          <div id="lookup-result" hidden></div>
+        </div>
+
+        <footer>
+          <button class="link" id="do-signout">Sign out</button>
+          <a class="link" id="open-console" href="#" target="_blank">Open console</a>
+        </footer>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
