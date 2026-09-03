@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { SigningRequest } from '@seal/shared';
+import type { CallerChallenge, SigningRequest } from '@seal/shared';
 import { api, setToken, useApi, useEvents } from './api.js';
 import { Enrol } from './screens/Enrol.js';
+import { Callers } from './screens/Callers.js';
 import { Requests } from './screens/Requests.js';
 import { SignIn, type Session } from './screens/SignIn.js';
 import { localCredentials } from './lib/device.js';
@@ -24,6 +25,10 @@ export function App() {
     session ? '/api/signing-requests' : null,
     bump,
   );
+  const { data: challenges } = useApi<CallerChallenge[]>(
+    session ? '/api/caller-challenges' : null,
+    bump,
+  );
 
   useEvents((type, data) => {
     const req = data as SigningRequest;
@@ -36,6 +41,10 @@ export function App() {
   const credentials = session ? localCredentials(session.id) : [];
   const pending = (requests ?? []).filter(
     (r) => r.state === 'PENDING' && r.subject_user_id === session?.id,
+  );
+  // Someone is being impersonated right now. Nothing outranks that.
+  const callers = (challenges ?? []).filter(
+    (c) => c.state === 'PENDING' && c.claimed_user_id === session?.id,
   );
 
   // A device with no key can do nothing useful, so send them straight to
@@ -85,6 +94,7 @@ export function App() {
           onClick={() => setTab('requests')}
         >
           Requests{pending.length > 0 ? ` (${pending.length})` : ''}
+          {callers.length > 0 ? <span className="alertdot" /> : null}
         </button>
         <button
           className={`btn sm ${tab === 'keys' ? 'primary' : 'ghost'}`}
@@ -106,6 +116,10 @@ export function App() {
       </div>
 
       <main className="body">
+        {session && callers.length > 0 ? (
+          <Callers session={session} challenges={challenges ?? []} onChanged={refresh} />
+        ) : null}
+
         {tab === 'requests' ? (
           <Requests session={session} requests={requests ?? []} onChanged={refresh} />
         ) : (
