@@ -1,0 +1,694 @@
+/* ---------------------------------------------------------------------------
+   SEAL console
+   The single most important rule in this stylesheet: a verified-origin record
+   and an unverified-origin record must never look alike. Lane A is green and
+   sealed; anything unverified is amber and says so in words, not just colour.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --bg: #0b0e13;
+  --panel: #121722;
+  --panel-2: #171d2a;
+  --line: #232c3d;
+  --line-soft: #1b2231;
+  --text: #e6ecf7;
+  --muted: #8a98b4;
+  --dim: #5d6a83;
+
+  --ok: #38d39f;
+  --ok-bg: rgba(56, 211, 159, 0.08);
+  --ok-line: rgba(56, 211, 159, 0.35);
+
+  --warn: #f0b429;
+  --warn-bg: rgba(240, 180, 41, 0.08);
+  --warn-line: rgba(240, 180, 41, 0.35);
+
+  --bad: #ff6b6b;
+  --bad-bg: rgba(255, 107, 107, 0.08);
+  --bad-line: rgba(255, 107, 107, 0.35);
+
+  --accent: #6aa8ff;
+  --accent-bg: rgba(106, 168, 255, 0.1);
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --- shell ---------------------------------------------------------------- */
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.brand small {
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.tab.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+.tab .dot {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #06101f;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.whoami {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.main {
+  padding: 22px;
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* --- typography ----------------------------------------------------------- */
+
+h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+  letter-spacing: 0.02em;
+}
+
+.lede {
+  color: var(--muted);
+  margin: 0 0 20px;
+  max-width: 72ch;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* --- panels --------------------------------------------------------------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* --- banners -------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid;
+  margin-bottom: 14px;
+}
+
+.banner .big {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.banner.ok {
+  background: var(--ok-bg);
+  border-color: var(--ok-line);
+  color: var(--ok);
+}
+
+.banner.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+
+.banner.bad {
+  background: var(--bad-bg);
+  border-color: var(--bad-line);
+  color: var(--bad);
+}
+
+.banner.info {
+  background: var(--accent-bg);
+  border-color: rgba(106, 168, 255, 0.3);
+  color: var(--accent);
+}
+
+.banner p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+/* --- badges --------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge.ok {
+  color: var(--ok);
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+}
+.badge.warn {
+  color: var(--warn);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+}
+.badge.bad {
+  color: var(--bad);
+  border-color: var(--bad-line);
+  background: var(--bad-bg);
+}
+.badge.accent {
+  color: var(--accent);
+  border-color: rgba(106, 168, 255, 0.3);
+  background: var(--accent-bg);
+}
+
+/* --- fields --------------------------------------------------------------- */
+
+label.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+label.field .lbl {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 5px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+input[readonly],
+input:disabled {
+  background: #0e1219;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Locked fields must read as locked at a glance -- this is the screen where an
+   employee would otherwise be socially engineered into editing a payment. */
+.locked {
+  position: relative;
+}
+
+.locked .val {
+  font-family: var(--mono);
+  background: #0e1219;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 9px 34px 9px 11px;
+  word-break: break-all;
+}
+
+.locked .lock {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* --- buttons -------------------------------------------------------------- */
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--dim);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06101f;
+  font-weight: 600;
+}
+
+.btn.good {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #04150f;
+  font-weight: 600;
+}
+
+.btn.danger {
+  color: var(--bad);
+  border-color: var(--bad-line);
+  background: var(--bad-bg);
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn.sm {
+  padding: 5px 11px;
+  font-size: 13px;
+}
+
+/* --- tables --------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr.clickable {
+  cursor: pointer;
+}
+
+tr.clickable:hover td {
+  background: var(--panel-2);
+}
+
+/* --- cards ---------------------------------------------------------------- */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 14px;
+}
+
+.card.laneA {
+  border-left: 3px solid var(--ok);
+}
+
+.card.laneB {
+  border-left: 3px solid var(--warn);
+}
+
+.card.dead {
+  opacity: 0.6;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 6px 14px;
+  font-size: 13px;
+}
+
+.kv dt {
+  color: var(--dim);
+}
+
+.kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+/* --- countdown ------------------------------------------------------------ */
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown.urgent {
+  color: var(--bad);
+}
+
+.countdown.warn {
+  color: var(--warn);
+}
+
+.meter {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.meter > i {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 1s linear;
+}
+
+.meter.warn > i {
+  background: var(--warn);
+}
+.meter.urgent > i {
+  background: var(--bad);
+}
+
+/* --- chain ---------------------------------------------------------------- */
+
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.chain-entry {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.chain-entry .seq {
+  font-family: var(--mono);
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.chain-entry .type {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.hashline {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  word-break: break-all;
+}
+
+.hashchip {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+/* --- modal ---------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 12, 0.75);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 20px;
+}
+
+.modal h2 {
+  margin-bottom: 6px;
+}
+
+/* --- metrics -------------------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  padding: 14px;
+}
+
+.tile .n {
+  font-size: 24px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tile .t {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+/* --- login ---------------------------------------------------------------- */
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login .box {
+  width: min(560px, 100%);
+}
+
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.person {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.person:hover {
+  border-color: var(--accent);
+}
+
+.person.on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.person .r {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--dim);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
