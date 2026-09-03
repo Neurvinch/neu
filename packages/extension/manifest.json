@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SEAL — Authorization Check",
+  "version": "0.1.0",
+  "description": "Check payment instructions against the SEAL ledger, challenge a caller, and capture channel evidence — from inside WhatsApp, mail or a meeting tab.",
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "notifications"],
+  "host_permissions": ["http://localhost:4000/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "SEAL — check this before you act"
+  },
+  "options_page": "src/options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*",
+        "https://mail.google.com/*",
+        "https://outlook.office.com/*",
+        "https://outlook.live.com/*",
+        "https://teams.microsoft.com/*",
+        "https://app.slack.com/*",
+        "https://web.telegram.org/*",
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*"
+      ],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": { "128": "icons/icon128.png" }
+}
