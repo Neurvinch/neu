@@ -15,6 +15,7 @@ import {
   TierBadge,
 } from '../components/ui.js';
 import { AwaitingDevice } from '../components/AwaitingDevice.js';
+import { CallerVerify } from '../components/CallerVerify.js';
 import type { Session } from './Login.js';
 
 const APPROVER_ROLES = ['CEO', 'CTO', 'TREASURY', 'CFO'];
@@ -42,6 +43,7 @@ export function Approvals({
   const [pendingRequest, setPendingRequest] = useState<SigningRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verify, setVerify] = useState(false);
 
   const refresh = () => {
     setTick((t) => t + 1);
@@ -76,6 +78,19 @@ export function Approvals({
 
   return (
     <>
+      <CallerVerify
+        open={verify}
+        onClose={() => setVerify(false)}
+        context={
+          selected
+            ? {
+                txn_id: selected.txn_id,
+                escrow_id: selected.escrow_id,
+                demand: `Approve ${selected.txn_id} — ${selected.intent.payee.name}`,
+              }
+            : undefined
+        }
+      />
       <h1>Approver panel</h1>
       <p className="lede">
         Two independent approvers must confirm the same hash, each on their own device. Urgency
@@ -234,6 +249,29 @@ export function Approvals({
                     Either button sends the decision to your enrolled device. Nothing is recorded
                     until you sign it there.
                   </p>
+
+                  {/* This is the sharp end. The employee's queue is empty when a
+                      deepfake calls, but an approver has a real escrow in front
+                      of them -- so a convincing voice saying "approve it, I just
+                      signed it" is the attack that actually has something to
+                      push against. */}
+                  <div className="banner warn" style={{ marginTop: 14, marginBottom: 0 }}>
+                    <div style={{ width: '100%' }}>
+                      <div className="big">NOBODY LEGITIMATE WILL CALL YOU ABOUT THIS</div>
+                      <p>
+                        Approvals arrive here and on your device — never by phone, video or chat. If
+                        someone is talking you through this one, that is the attack, however much
+                        they look and sound like {selected.signer.user_id}.
+                      </p>
+                      <button
+                        className="btn sm danger"
+                        style={{ marginTop: 8 }}
+                        onClick={() => setVerify(true)}
+                      >
+                        Someone is on a call about this — verify them
+                      </button>
+                    </div>
+                  </div>
                 </>
               ) : null}
             </Panel>
