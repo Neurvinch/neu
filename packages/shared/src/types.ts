@@ -46,7 +46,7 @@ export const DEVICE_ASSURANCE: Record<DeviceKind, { binding: CredentialBinding; 
 /** Roles that may not sign with a console-resident key. */
 export const OUT_OF_BAND_ROLES: Role[] = ['CFO', 'CEO', 'CTO', 'TREASURY'];
 
-export type SignaturePurpose = 'INTENT' | 'APPROVAL' | 'ENROLLMENT';
+export type SignaturePurpose = 'INTENT' | 'APPROVAL' | 'ENROLLMENT' | 'ATTESTATION';
 
 /* ---------------------------------------------------------------------------
  * Signature envelopes
@@ -211,6 +211,14 @@ export interface SigningRequest {
   payload: unknown;
   payload_hash: string;
   action: SigningAction;
+  /** Risk tier where one is already known (approvals). */
+  tier?: RiskTier | null;
+  /**
+   * What is unusual about this request, computed server-side and rendered on
+   * the signing device. A CFO glancing at her phone should not have to
+   * cross-reference a vendor master in her head.
+   */
+  warnings: string[];
   state: SigningRequestState;
   requested_by: string;
   requested_from: string;
@@ -220,6 +228,72 @@ export interface SigningRequest {
   resolved_at?: string | null;
   error?: string | null;
   result?: Record<string, unknown> | null;
+}
+
+/* ---------------------------------------------------------------------------
+ * Caller challenges -- the answer to a deepfaked video call
+ *
+ * Signatures already make the *transaction* unforgeable. They do nothing for
+ * the human standing in front of a screen while a perfect copy of their CFO's
+ * face and voice tells them to hurry up. That person still has a real decision
+ * to make, and the interface is where it is won or lost.
+ *
+ * So we stop asking people to detect a fake and give them something a fake
+ * cannot survive: a challenge only the genuine person's enrolled device can
+ * answer. The person being pressured raises a challenge; a short code appears
+ * on the claimed executive's device and nowhere else; they ask the caller to
+ * read it back. A deepfake has the face and the voice. It does not have the
+ * phone in that person's pocket.
+ *
+ * The reverse direction matters just as much: the real executive is asked
+ * "are you on a call with Aravind right now?". If they are not, one tap tells
+ * everyone -- and the impersonation is discovered from the other end, by the
+ * person being impersonated, without anyone having to spot a rendering artefact.
+ * ------------------------------------------------------------------------- */
+
+export type CallerChannel = 'PHONE' | 'VIDEO' | 'MEETING' | 'EMAIL' | 'CHAT' | 'IN_PERSON';
+
+export type CallerChallengeState = 'PENDING' | 'CONFIRMED' | 'DENIED' | 'EXPIRED';
+
+export interface CallerChallenge {
+  id: string;
+  /** Who the caller claims to be. */
+  claimed_user_id: string;
+  claimed_name: string;
+  claimed_role: Role;
+  /** Who is being pressured. */
+  raised_by: string;
+  raised_by_name: string;
+  channel: CallerChannel;
+  /** What the caller is asking for, in the words of the person being asked. */
+  demand: string;
+  /**
+   * The read-back code. Shown to the person who raised the challenge and on the
+   * claimed executive's enrolled device -- nowhere else, and never over the
+   * channel the caller is using.
+   */
+  code: string;
+  state: CallerChallengeState;
+  txn_id?: string | null;
+  escrow_id?: string | null;
+  created_at: string;
+  expires_at: string;
+  seconds_remaining: number;
+  resolved_at?: string | null;
+  /** Present once confirmed: the signed attestation from the executive's device. */
+  attested?: boolean;
+}
+
+/** What an executive signs to attest that they really are on this call. */
+export interface CallerAttestation {
+  v: 1;
+  type: 'caller_attestation';
+  challenge_id: string;
+  claimed_user_id: string;
+  raised_by: string;
+  channel: CallerChannel;
+  code: string;
+  at: string;
 }
 
 /* ---------------------------------------------------------------------------
@@ -318,6 +392,11 @@ export type AuditType =
   | 'SIGNING_REQUESTED'
   | 'SIGNING_DECLINED'
   | 'SIGNING_EXPIRED'
+  | 'CALLER_CHALLENGE_RAISED'
+  | 'CALLER_CONFIRMED'
+  | 'CALLER_DENIED'
+  | 'CALLER_CHALLENGE_EXPIRED'
+  | 'IMPERSONATION_REPORTED'
   | 'INTENT_SIGNED'
   | 'INTENT_VERIFY_FAILED'
   | 'INTENT_ACCEPTED'
