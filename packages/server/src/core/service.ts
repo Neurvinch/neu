@@ -459,6 +459,21 @@ export function sweepExpired(): number {
 export function buildBundle(escrowId: string): ApprovalBundle {
   const escrow = getEscrowRow(escrowId);
   if (!escrow) throw missing('NO_SUCH_ESCROW');
+
+  // An approval bundle is the thing a payment rail will act on, so emitting one
+  // is equivalent to authorizing the payment. It must not exist before the
+  // quorum does -- otherwise anyone who could read this endpoint could carry a
+  // half-approved payment to a rail whose own threshold happened to be lower.
+  if (escrow.state === 'PENDING_QUORUM' && !quorumStatus(escrowId).met) {
+    const q = quorumStatus(escrowId);
+    throw conflict(
+      'QUORUM_NOT_MET',
+      `This escrow has ${q.approvals} of ${q.required} approvals${
+        q.required > 2 && !q.treasuryPresent ? ' and still needs the treasury head' : ''
+      }.`,
+    );
+  }
+
   const intentRow = getIntentRow(escrow.txn_id)!;
 
   return {
