@@ -692,3 +692,30 @@ tr.clickable:hover td {
   border: 1px dashed var(--line);
   border-radius: var(--radius);
 }
+
+/* --- caller verification --------------------------------------------------
+   The code gets read down a phone line, so it is large, spaced and drawn from
+   an alphabet with no 0/O or 1/I confusion. */
+
+.code-box {
+  text-align: center;
+  padding: 22px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  margin: 14px 0;
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 38px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: var(--ok);
+}
+
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
