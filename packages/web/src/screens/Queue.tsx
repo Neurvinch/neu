@@ -11,6 +11,7 @@ import {
   Money,
   Panel,
 } from '../components/ui.js';
+import { CallerVerify } from '../components/CallerVerify.js';
 import type { Session } from './Login.js';
 
 interface QueueItem {
@@ -44,6 +45,7 @@ export function Queue({ session, bump, onChanged }: { session: Session; bump: nu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState<{ escrow_id: string; txn_id: string } | null>(null);
+  const [verify, setVerify] = useState(false);
 
   const refresh = () => {
     setTick((t) => t + 1);
@@ -86,6 +88,7 @@ export function Queue({ session, bump, onChanged }: { session: Session; bump: nu
 
   return (
     <>
+      <CallerVerify open={verify} onClose={() => setVerify(false)} />
       <h1>Request queue</h1>
       <p className="lede">
         Everything here arrived already signed by an executive. You can accept it or reject it. There
@@ -101,10 +104,14 @@ export function Queue({ session, bump, onChanged }: { session: Session; bump: nu
       ) : null}
       {error ? <Banner tone="bad" title="That did not go through">{error}</Banner> : null}
 
-      <Banner tone="plain" title="Deepfake Vishing Defense Active (Problem Statement PS1)">
-        If an executive or vendor is calling or on a video meeting demanding an emergency transfer, this
-        queue is your ground truth. If no signed request is present here, <strong>no authorization exists</strong>.
-        Phone calls, video meetings, and emails carry zero signing authority.
+      <Banner tone="info" title="If someone is calling you about a payment">
+        This queue is your ground truth. If no signed request is sitting here, no authorization
+        exists — whatever the person on the call looks and sounds like. Phone calls, video meetings
+        and emails carry zero signing authority, and no genuine executive will ever ask you to work
+        around that.{' '}
+        <button className="btn sm danger" style={{ marginTop: 8 }} onClick={() => setVerify(true)}>
+          Verify who is calling me
+        </button>
       </Banner>
 
       <div className="grid-2">
@@ -119,6 +126,12 @@ export function Queue({ session, bump, onChanged }: { session: Session; bump: nu
                 If someone is on the phone insisting a payment is urgent, this empty queue is your
                 answer. There is no signed request, so there is nothing to process.
               </div>
+              {/* The moment of maximum pressure. Do not leave someone staring at
+                  an empty screen with a "CFO" shouting at them -- give them the
+                  next move. */}
+              <button className="btn danger" style={{ marginTop: 14 }} onClick={() => setVerify(true)}>
+                Someone is pressuring me right now
+              </button>
             </Empty>
           ) : (
             <table>
