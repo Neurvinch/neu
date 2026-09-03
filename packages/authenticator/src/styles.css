@@ -403,3 +403,95 @@ select:focus {
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
+
+/* --- caller challenges ----------------------------------------------------
+   The loudest thing this app can show. Someone is being impersonated right now,
+   and the person who can stop it is holding this phone. */
+
+.card.challenge {
+  border-color: var(--bad-line);
+  background: linear-gradient(180deg, var(--bad-bg), transparent 55%), var(--panel);
+}
+
+.demand {
+  margin: 8px 0 18px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--bad);
+  background: rgba(255, 107, 107, 0.06);
+  border-radius: 0 10px 10px 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.btn.big {
+  padding: 18px 16px;
+  font-size: 16px;
+  border-radius: 14px;
+}
+
+.btn.danger.big {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #23070a;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 14px;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.code-box {
+  text-align: center;
+  padding: 18px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: #0a0e14;
+  margin-bottom: 12px;
+}
+
+/* Big, spaced, unambiguous -- this gets read down a bad phone line. */
+.code {
+  font-family: var(--mono);
+  font-size: 34px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--ok);
+  margin-bottom: 6px;
+}
+
+.alertdot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bad);
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Server-computed reasons this request is unusual. The person holding the phone
+   should not have to keep a vendor master in their head while somebody talks
+   urgently at them. */
+.warnlist {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.warnlist li {
+  margin-bottom: 4px;
+}
