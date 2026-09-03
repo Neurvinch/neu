@@ -62,6 +62,10 @@ export function useEvents(onEvent: (type: string, data: unknown) => void) {
       'rail.refused',
       'signing.requested',
       'signing.resolved',
+      'caller.raised',
+      'caller.resolved',
+      'impersonation.alert',
+      'evidence.captured',
     ];
     const listeners = types.map((t) => {
       const fn = (e: MessageEvent) => handler.current(t, JSON.parse(e.data));
