@@ -9,6 +9,7 @@ import { Audit } from './screens/Audit.js';
 import { Console as RiskConsole } from './screens/Console.js';
 import { VishingLab } from './screens/VishingLab.js';
 import { Badge } from './components/ui.js';
+import { CallerVerify } from './components/CallerVerify.js';
 import { vault } from './lib/vault.js';
 import { playAttackBlocked, playSettlementChime } from './lib/sound.js';
 
@@ -39,6 +40,13 @@ export function App() {
   const [tab, setTab] = useState<Tab>('devices');
   const [bump, setBump] = useState(0);
   const [flash, setFlash] = useState<string | null>(null);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [impersonation, setImpersonation] = useState<{
+    claimed_user_id: string;
+    raised_by: string;
+    channel: string;
+    demand: string;
+  } | null>(null);
   const { data: policy } = useApi<{ demo_window_seconds: number | null }>(
     session ? '/api/policy' : null,
     bump,
@@ -68,6 +76,14 @@ export function App() {
       playSettlementChime();
     }
     if (type === 'signing.requested') setFlash('A signature request was pushed to an enrolled device.');
+    if (type === 'evidence.captured') setFlash('Channel evidence captured from the browser extension.');
+    // An executive has said "that is not me". Everyone on the console needs to
+    // know immediately, not in a report tomorrow.
+    if (type === 'impersonation.alert') {
+      setImpersonation(
+        data as { claimed_user_id: string; raised_by: string; channel: string; demand: string },
+      );
+    }
     if (flashTimer) clearTimeout(flashTimer);
     flashTimer = setTimeout(() => setFlash(null), 6000);
   });
@@ -97,6 +113,13 @@ export function App() {
         <div className="brand">
           SEAL <small>Lane A · software-bound credentials</small>
         </div>
+        <button
+          className="btn sm danger"
+          onClick={() => setVerifyOpen(true)}
+          title="Someone is on a call or a message pressuring you to act"
+        >
+          Verify a caller
+        </button>
         {policy?.demo_window_seconds ? (
           <Badge tone="bad">demo: windows shortened to {policy.demo_window_seconds}s</Badge>
         ) : null}
@@ -134,7 +157,30 @@ export function App() {
         </div>
       </header>
 
+      <CallerVerify open={verifyOpen} onClose={() => setVerifyOpen(false)} />
+
       <main className="main">
+        {impersonation ? (
+          <div className="banner bad" style={{ marginBottom: 16 }}>
+            <div style={{ width: '100%' }}>
+              <div className="big">ACTIVE IMPERSONATION REPORTED</div>
+              <p>
+                {impersonation.claimed_user_id} has confirmed from their own device that they are
+                NOT on the {impersonation.channel.toLowerCase().replace('_', ' ')} with{' '}
+                {impersonation.raised_by} asking for: &ldquo;{impersonation.demand}&rdquo;. Anything
+                that call was pushing for has been stopped.
+              </p>
+              <button
+                className="btn sm ghost"
+                style={{ marginTop: 8 }}
+                onClick={() => setImpersonation(null)}
+              >
+                Acknowledge
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {flash ? (
           <div className="banner warn" style={{ marginBottom: 16 }}>
             <div>
