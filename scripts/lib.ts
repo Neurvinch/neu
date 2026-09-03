@@ -8,7 +8,14 @@ import {
   memoryCounterStore,
   toHex,
 } from '@seal/shared';
-import type { Decision, SealSigner, SigningRequest, TransactionIntent } from '@seal/shared';
+import type {
+  CallerAttestation,
+  CallerChallenge,
+  Decision,
+  SealSigner,
+  SigningRequest,
+  TransactionIntent,
+} from '@seal/shared';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -282,6 +289,67 @@ export async function approveEnrollments(approvers: Device[]) {
       }
     }
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Caller challenges
+ * ------------------------------------------------------------------------- */
+
+export async function raiseChallenge(
+  raiser: Device,
+  claimedUserId: string,
+  channel: string,
+  demand: string,
+  context: { txn_id?: string; escrow_id?: string } = {},
+) {
+  return api<CallerChallenge>('/api/caller-challenges', {
+    body: {
+      claimed_user_id: claimedUserId,
+      channel,
+      demand,
+      txn_id: context.txn_id ?? null,
+      escrow_id: context.escrow_id ?? null,
+      source: { platform: 'WhatsApp Web', url: 'https://web.whatsapp.com/' },
+    },
+    token: raiser.token,
+  });
+}
+
+export async function denyChallenge(device: Device, id: string) {
+  return api<CallerChallenge>(`/api/caller-challenges/${id}/deny`, {
+    body: { note: 'Not me' },
+    token: device.token,
+  });
+}
+
+/** Confirming is signed, so it needs the device -- exactly like everything else. */
+export async function confirmChallenge(device: Device, id: string) {
+  const attestation = await api<CallerAttestation>(
+    `/api/caller-challenges/${id}/attestation`,
+    { token: device.token },
+  );
+  const signature = await device.signer.sign(
+    'ATTESTATION',
+    sha256(canonicalize(attestation)),
+  );
+  return api<CallerChallenge>(`/api/caller-challenges/${id}/confirm`, {
+    body: { signature },
+    token: device.token,
+  });
+}
+
+export async function lookupClaim(device: Device, txnId: string) {
+  return api<{ exists: boolean; authorized: boolean; verdict: string; headline: string }>(
+    `/api/claims/lookup?txn_id=${encodeURIComponent(txnId)}`,
+    { token: device.token },
+  );
+}
+
+export async function captureEvidence(device: Device, evidence: Record<string, unknown>) {
+  return api<{ seq: number; entry_hash: string }>('/api/evidence', {
+    body: evidence,
+    token: device.token,
+  });
 }
 
 /* ---------------------------------------------------------------------------
