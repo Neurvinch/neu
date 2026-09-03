@@ -1,4 +1,4 @@
-import { canonicalize, formatINR } from '@seal/shared';
+import { POLICY, canonicalize, formatINR, toPaise } from '@seal/shared';
 import type {
   ApprovalAssertion,
   SignatureEnvelope,
@@ -12,6 +12,7 @@ import { appendAudit } from '../audit.js';
 import { db, tx } from '../db.js';
 import { broadcast } from '../events.js';
 import { hashCanonical, randomId } from '../hash.js';
+import { impersonationSignal } from '../risk.js';
 import { bad, conflict, denied, missing } from './errors.js';
 import { assertCustodyAllowed, enrollmentApprovalPayload, approveEnrollment } from './enrollment.js';
 import {
@@ -57,6 +58,8 @@ interface RequestRow {
   payload_json: string;
   payload_hash: string;
   action_json: string;
+  tier: string | null;
+  warnings_json: string;
   state: SigningRequestState;
   requested_by: string;
   requested_from: string;
@@ -79,6 +82,8 @@ function toView(r: RequestRow): SigningRequest {
     payload: JSON.parse(r.payload_json),
     payload_hash: r.payload_hash,
     action: JSON.parse(r.action_json),
+    tier: (r.tier as SigningRequest['tier']) ?? null,
+    warnings: JSON.parse(r.warnings_json ?? '[]'),
     state: r.state,
     requested_by: r.requested_by,
     requested_from: r.requested_from,
@@ -125,7 +130,69 @@ export interface CreateRequestInput {
   title: string;
   subtitle: string;
   rows: Array<[string, string]>;
+  tier?: string | null;
+  warnings?: string[];
   ttlMs?: number;
+}
+
+/**
+ * What is unusual about this request, in words, computed here and rendered on
+ * the signing device.
+ *
+ * This is the other half of defeating a convincing impersonation. A CFO
+ * glancing at her phone while someone talks urgently at her should not have to
+ * hold the vendor master in her head -- the prompt itself should say "this
+ * account has never been paid before". The strongest social-engineering
+ * pressure in the world does not change what these lines say.
+ */
+function intentWarnings(intent: TransactionIntent): string[] {
+  const out: string[] = [];
+
+  const byAccount = db
+    .prepare(`SELECT * FROM vendor_master WHERE account = ? AND active = 1`)
+    .get(intent.payee.account) as { name: string; ifsc: string } | undefined;
+
+  const byName = db
+    .prepare(`SELECT account FROM vendor_master WHERE lower(name) = lower(?) AND active = 1`)
+    .all(intent.payee.name) as unknown as Array<{ account: string }>;
+
+  if (!byAccount && byName.length > 0) {
+    out.push(
+      `The name matches a known vendor but the account does not. On file: ${byName[0].account}.`,
+    );
+  } else if (!byAccount) {
+    out.push('This account is not in your vendor master. It has never been paid before.');
+  } else if (byAccount.ifsc !== intent.payee.ifsc) {
+    out.push(`The IFSC differs from the verified record for this vendor (${byAccount.ifsc}).`);
+  }
+
+  if (toPaise(intent.amount.value) > toPaise(POLICY.LARGE_THRESHOLD)) {
+    out.push('This is above the large-payment threshold.');
+  }
+
+  const hours = (Date.parse(intent.deadline) - Date.now()) / 3_600_000;
+  if (Number.isFinite(hours) && hours < 4) {
+    out.push('The deadline is under four hours away. Urgency is the most common lever in this attack.');
+  }
+
+  const priorExpiry = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM escrows e JOIN intents i ON i.txn_id = e.txn_id
+       WHERE e.state = 'EXPIRED'
+         AND json_extract(i.intent_json, '$.payee.account') = ?
+         AND e.expires_at > datetime('now', '-1 day')`,
+    )
+    .get(intent.payee.account) as { n: number };
+  if (priorExpiry.n > 0) {
+    out.push('A payment to this account already timed out in the last 24 hours.');
+  }
+
+  const impersonation = impersonationSignal(intent.originator.user_id);
+  if (impersonation.denied > 0) {
+    out.push('Someone was impersonating you recently. Be especially careful with this one.');
+  }
+
+  return out;
 }
 
 function create(input: CreateRequestInput): SigningRequest {
@@ -137,8 +204,8 @@ function create(input: CreateRequestInput): SigningRequest {
     db.prepare(
       `INSERT INTO signing_requests
          (id, purpose, subject_user_id, title, subtitle, rows_json, payload_json, payload_hash,
-          action_json, state, requested_by, requested_from, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`,
+          action_json, tier, warnings_json, state, requested_by, requested_from, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)`,
     ).run(
       id,
       input.purpose,
@@ -149,6 +216,8 @@ function create(input: CreateRequestInput): SigningRequest {
       canonicalize(input.payload),
       payload_hash,
       JSON.stringify(input.action),
+      input.tier ?? null,
+      JSON.stringify(input.warnings ?? []),
       input.requester.id,
       'console',
       now.toISOString(),
@@ -232,6 +301,7 @@ export function requestIntentSignature(requester: UserRow, intent: TransactionIn
       ['Purpose', intent.purpose],
       ['Pay by', new Date(intent.deadline).toLocaleString()],
     ],
+    warnings: intentWarnings(intent),
     // A signing request must not outlive the signature validity it would produce.
     ttlMs: Math.min(DEFAULT_TTL_MS, Math.max(30_000, Date.parse(intent.exp) - Date.now())),
   });
@@ -290,6 +360,13 @@ export function requestApprovalSignature(
       ['Intent hash', escrow.intent_hash],
       ['Your decision', decision],
     ],
+    tier: risk.tier,
+    warnings: [
+      ...(JSON.parse(escrow.risk_json).notes as string[]).filter((n) => !n.startsWith('Lane A:')),
+      ...(decision === 'APPROVE'
+        ? ['Approving is final. The payment executes as soon as the quorum is met.']
+        : []),
+    ],
     // The request dies with the escrow window, never after it.
     ttlMs: Math.min(DEFAULT_TTL_MS, Math.max(30_000, Date.parse(escrow.expires_at) - Date.now())),
   });
@@ -341,6 +418,12 @@ export function requestEnrollmentApprovalSignature(requester: UserRow, enrollmen
       ['Credential', req.credential_id],
       ['Custody', req.device_kind],
       ['Public key', req.public_key],
+    ],
+    warnings: [
+      `Admitting this key lets ${req.name} authorize payments. Only do this if you know they set up a new device.`,
+      ...(impersonationSignal(req.user_id).denied > 0
+        ? ['Someone was recently impersonating this person. Verify out of band before admitting a key for them.']
+        : []),
     ],
   });
 }
