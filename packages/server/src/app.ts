@@ -22,6 +22,15 @@ import {
   listEnrollments,
 } from './core/enrollment.js';
 import {
+  attestationPayload,
+  confirmChallenge,
+  denyChallenge,
+  getChallenge,
+  listChallengesFor,
+  raiseChallenge,
+  recordEvidence,
+} from './core/caller.js';
+import {
   declineRequest,
   fulfilRequest,
   getRequest,
@@ -41,6 +50,9 @@ import {
   txnSummary,
 } from './core/service.js';
 import { metrics } from './metrics.js';
+
+const CALLER_CHANNELS = ['PHONE', 'VIDEO', 'MEETING', 'EMAIL', 'CHAT', 'IN_PERSON'];
+const EVIDENCE_KINDS = ['TEXT', 'AUDIO', 'VIDEO', 'IMAGE', 'FILE'];
 
 export function createApp() {
   const app = express();
@@ -112,6 +124,12 @@ export function createApp() {
       lane_b_implemented: false,
       out_of_band_roles: OUT_OF_BAND_ROLES,
       device_assurance: DEVICE_ASSURANCE,
+      caller_channels: CALLER_CHANNELS,
+      // Who a caller might plausibly claim to be. Staff pick from this list
+      // rather than typing a name, so a challenge always reaches a real device.
+      challengeable: listUsers()
+        .filter((u) => OUT_OF_BAND_ROLES.includes(u.role))
+        .map((u) => ({ id: u.id, name: u.name, role: u.role })),
       // Surfaced so the UI can say out loud that windows have been shortened
       // for a demo, rather than quietly showing a 45-second "90 minute" hold.
       demo_window_seconds: CONFIG.demoWindowSeconds,
@@ -367,6 +385,149 @@ export function createApp() {
       allow_credentials: credentialsFor(user.id)
         .filter((c) => c.webauthn_id && c.state === 'ACTIVE')
         .map((c) => ({ id: c.webauthn_id, credential_id: c.credential_id })),
+    });
+  });
+
+  /* --------------------------------------------------------------------
+   * Caller challenges -- the human half of the defence
+   *
+   * Cryptography settles whether a *transaction* is genuine. These endpoints
+   * settle whether the *person on the call* is genuine, and they do it without
+   * asking anybody to spot a rendering artefact.
+   * ------------------------------------------------------------------ */
+
+  app.get('/api/caller-challenges', (req, res) => {
+    const user = requireUser(req);
+    ok(res, listChallengesFor(user.id));
+  });
+
+  app.post('/api/caller-challenges', (req, res) => {
+    const user = requireUser(req);
+    const { claimed_user_id, channel, demand, txn_id, escrow_id, source } = req.body ?? {};
+    if (!claimed_user_id || !channel) throw bad('MISSING_FIELDS');
+    if (!CALLER_CHANNELS.includes(channel)) throw bad('BAD_CHANNEL');
+    res.status(201).json(
+      raiseChallenge({
+        raiser: user,
+        claimedUserId: claimed_user_id,
+        channel,
+        demand: String(demand ?? 'Not stated'),
+        txnId: txn_id ?? null,
+        escrowId: escrow_id ?? null,
+        source: source ?? null,
+      }),
+    );
+  });
+
+  app.get('/api/caller-challenges/:id', (req, res) => {
+    const user = requireUser(req);
+    ok(res, getChallenge(req.params.id, user.id));
+  });
+
+  /** The object the claimed executive's device signs to vouch for the call. */
+  app.get('/api/caller-challenges/:id/attestation', (req, res) => {
+    const user = requireUser(req);
+    ok(res, attestationPayload(req.params.id, user.id));
+  });
+
+  app.post('/api/caller-challenges/:id/confirm', async (req, res) => {
+    const user = requireUser(req);
+    const { signature } = req.body ?? {};
+    if (!signature) throw bad('MISSING_FIELDS', 'Confirming a call requires a signature');
+    ok(res, await confirmChallenge(req.params.id, user, signature));
+  });
+
+  app.post('/api/caller-challenges/:id/deny', (req, res) => {
+    const user = requireUser(req);
+    ok(res, denyChallenge(req.params.id, user, String(req.body?.note ?? '')));
+  });
+
+  /**
+   * Evidence captured where the pressure actually arrived -- a message in
+   * WhatsApp Web, a mail, a meeting tab -- by the browser extension.
+   *
+   * Media never leaves the reporter's machine: the extension hashes it locally
+   * and sends the digest. Enough to prove later that the clip an investigator
+   * holds is the clip that arrived, without this system becoming a warehouse of
+   * other people's private messages.
+   */
+  app.post('/api/evidence', (req, res) => {
+    const user = requireUser(req);
+    const { platform, url, sender, kind, excerpt, media_sha256, media_bytes, challenge_id, txn_id } =
+      req.body ?? {};
+    if (!platform || !kind) throw bad('MISSING_FIELDS');
+    if (!EVIDENCE_KINDS.includes(kind)) throw bad('BAD_EVIDENCE_KIND');
+    if (media_sha256 && !/^[0-9a-f]{64}$/.test(media_sha256)) throw bad('BAD_MEDIA_DIGEST');
+    res.status(201).json(
+      recordEvidence({
+        actor: user,
+        platform: String(platform).slice(0, 64),
+        url: url ? String(url).slice(0, 500) : null,
+        sender: sender ? String(sender).slice(0, 200) : null,
+        kind,
+        excerpt: excerpt ? String(excerpt) : null,
+        media_sha256: media_sha256 ?? null,
+        media_bytes: typeof media_bytes === 'number' ? media_bytes : null,
+        challenge_id: challenge_id ?? null,
+        txn_id: txn_id ?? null,
+      }),
+    );
+  });
+
+  /**
+   * The lookup the browser extension exists to make.
+   *
+   * Someone in a chat window claims a payment was authorized. This answers, in
+   * one call and from inside that chat window, what the ledger actually says --
+   * which is very often "no such thing exists".
+   */
+  app.get('/api/claims/lookup', (req, res) => {
+    requireUser(req);
+    const txnId = String(req.query.txn_id ?? '').trim().toUpperCase();
+
+    if (!txnId) {
+      throw bad('MISSING_FIELDS', 'Provide a transaction id such as TX-4A2B1C');
+    }
+
+    let summary: ReturnType<typeof txnSummary> | null = null;
+    try {
+      summary = txnSummary(txnId);
+    } catch {
+      summary = null;
+    }
+
+    if (!summary) {
+      ok(res, {
+        txn_id: txnId,
+        exists: false,
+        authorized: false,
+        verdict: 'NO_SUCH_AUTHORIZATION',
+        headline: 'No signed authorization exists for that reference.',
+        detail:
+          'Nothing in the ledger matches. Whoever is telling you this was approved is either mistaken or lying, whatever they sound like.',
+      });
+      return;
+    }
+
+    const escrow = summary.escrow;
+    const executed = escrow?.state === 'EXECUTED';
+    ok(res, {
+      txn_id: txnId,
+      exists: true,
+      authorized: true,
+      verdict: executed ? 'EXECUTED' : (escrow?.state ?? summary.state),
+      headline: executed
+        ? 'This payment was authorized and has already settled.'
+        : `This payment exists and is ${(escrow?.state ?? summary.state).toLowerCase().replace('_', ' ')}.`,
+      signed_by: summary.intent.originator,
+      custody: escrow?.signer.device_kind ?? null,
+      payee: summary.intent.payee,
+      amount: summary.intent.amount,
+      intent_hash: summary.intent_hash,
+      approvals:
+        escrow?.approvals.map((a) => ({ approver_id: a.approver_id, decision: a.decision })) ?? [],
+      detail:
+        'Compare the payee and the amount below against what you were told. If they differ, what you were told is not this payment.',
     });
   });
 
