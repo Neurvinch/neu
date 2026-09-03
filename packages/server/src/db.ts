@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS signing_requests (
   state           TEXT NOT NULL CHECK (state IN ('PENDING','SIGNED','DECLINED','EXPIRED','FAILED')),
   requested_by    TEXT NOT NULL,
   requested_from  TEXT NOT NULL,
+  tier            TEXT,
+  warnings_json   TEXT NOT NULL DEFAULT '[]',
   created_at      TEXT NOT NULL,
   expires_at      TEXT NOT NULL,
   resolved_at     TEXT,
@@ -66,6 +68,31 @@ CREATE TABLE IF NOT EXISTS signing_requests (
   error           TEXT,
   result_json     TEXT
 );
+
+-- Caller challenges.
+--
+-- Raised by whoever is being pressured, answered only by the device of the
+-- person the caller claims to be. The code lives here and is shown in exactly
+-- two places: to the person who raised it, and on the claimed executive
+--  device. Never on the channel the caller is using.
+CREATE TABLE IF NOT EXISTS caller_challenges (
+  id              TEXT PRIMARY KEY,
+  claimed_user_id TEXT NOT NULL REFERENCES users(id),
+  raised_by       TEXT NOT NULL REFERENCES users(id),
+  channel         TEXT NOT NULL,
+  demand          TEXT NOT NULL,
+  code            TEXT NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('PENDING','CONFIRMED','DENIED','EXPIRED')),
+  txn_id          TEXT,
+  escrow_id       TEXT,
+  attestation_json TEXT,
+  envelope_json   TEXT,
+  created_at      TEXT NOT NULL,
+  expires_at      TEXT NOT NULL,
+  resolved_at     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_caller_state ON caller_challenges(claimed_user_id, state);
 
 -- One-time challenges for WebAuthn ceremonies, kept server-side so a client
 -- can never choose its own challenge.
