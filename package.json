@@ -1,0 +1,28 @@
+{
+  "name": "seal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SEAL - Signed Executive Authorization Ledger (Lane A)",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/bank",
+    "packages/web",
+    "packages/authenticator"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "seed": "npm run seed -w @seal/server",
+    "server": "npm run dev -w @seal/server",
+    "bank": "npm run dev -w @seal/bank",
+    "web": "npm run dev -w @seal/web",
+    "sim": "tsx scripts/simulate.ts",
+    "reset": "node scripts/reset.mjs",
+    "check": "tsx scripts/check-credential.ts",
+    "auth": "npm run dev -w @seal/authenticator"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
