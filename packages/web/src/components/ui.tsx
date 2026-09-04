@@ -47,12 +47,14 @@ export function Banner({
  */
 const CUSTODY_LABEL: Record<DeviceKind, string> = {
   console: 'console key',
+  extension: 'extension key',
   authenticator: 'authenticator app',
   hardware: 'hardware key',
 };
 
 export function CustodyBadge({ kind }: { kind: DeviceKind }) {
-  const tone = kind === 'hardware' ? 'ok' : kind === 'authenticator' ? 'warn' : 'bad';
+  const tone =
+    kind === 'hardware' ? 'ok' : kind === 'console' ? 'bad' : 'warn';
   return (
     <Badge tone={tone} title={`${DEVICE_ASSURANCE[kind].label} · risk premium +${DEVICE_ASSURANCE[kind].riskPremium}`}>
       {CUSTODY_LABEL[kind]}
