@@ -21,6 +21,7 @@ import {
   inBootstrap,
   listEnrollments,
 } from './core/enrollment.js';
+import { lookupMedia, mediaAttestation, recentMedia, signMedia } from './core/media.js';
 import {
   attestationPayload,
   confirmChallenge,
@@ -52,6 +53,11 @@ import {
 import { metrics } from './metrics.js';
 
 const CALLER_CHANNELS = ['PHONE', 'VIDEO', 'MEETING', 'EMAIL', 'CHAT', 'IN_PERSON'];
+
+/** Software custody tiers. Hardware runs a different ceremony entirely. */
+const SOFTWARE_KINDS = ['console', 'extension', 'authenticator'] as const;
+const isSoftwareKind = (k: unknown): k is (typeof SOFTWARE_KINDS)[number] =>
+  SOFTWARE_KINDS.includes(k as (typeof SOFTWARE_KINDS)[number]);
 const EVIDENCE_KINDS = ['TEXT', 'AUDIO', 'VIDEO', 'IMAGE', 'FILE'];
 
 export function createApp() {
@@ -157,7 +163,7 @@ export function createApp() {
       ok(res, { device_kind: 'hardware', options: await beginHardwareEnrollment(user) });
       return;
     }
-    if (deviceKind !== 'console' && deviceKind !== 'authenticator') throw bad('BAD_DEVICE_KIND');
+    if (!isSoftwareKind(deviceKind)) throw bad('BAD_DEVICE_KIND');
     assertCustodyAllowed(user.role, deviceKind);
 
     const started = beginSoftwareEnrollment(user.id);
@@ -186,7 +192,7 @@ export function createApp() {
       );
       return;
     }
-    if (device_kind !== 'console' && device_kind !== 'authenticator') throw bad('BAD_DEVICE_KIND');
+    if (!isSoftwareKind(device_kind)) throw bad('BAD_DEVICE_KIND');
     if (!public_key || !proof) throw bad('MISSING_FIELDS');
     ok(
       res,
@@ -386,6 +392,55 @@ export function createApp() {
         .filter((c) => c.webauthn_id && c.state === 'ACTIVE')
         .map((c) => ({ id: c.webauthn_id, credential_id: c.credential_id })),
     });
+  });
+
+  /* --------------------------------------------------------------------
+   * Media provenance
+   *
+   * The extension hashes a file locally and asks these two questions: who
+   * signed this, and will you record that I sign it. The bytes themselves never
+   * come near this server.
+   * ------------------------------------------------------------------ */
+
+  /** What a signer's device must sign to vouch for one exact file. */
+  app.post('/api/media/attestation', (req, res) => {
+    const user = requireUser(req);
+    const { sha256, kind, bytes, platform, caption } = req.body ?? {};
+    if (!sha256 || !kind) throw bad('MISSING_FIELDS');
+    ok(
+      res,
+      mediaAttestation({
+        sha256: String(sha256).toLowerCase(),
+        kind,
+        bytes: Number(bytes ?? 0),
+        platform: String(platform ?? 'unknown'),
+        caption: String(caption ?? ''),
+        signer_id: user.id,
+        at: new Date().toISOString(),
+      }),
+    );
+  });
+
+  app.post('/api/media/sign', async (req, res) => {
+    const user = requireUser(req);
+    const { attestation, signature } = req.body ?? {};
+    if (!attestation || !signature) throw bad('MISSING_FIELDS');
+    res.status(201).json(await signMedia({ actor: user, attestation, signature }));
+  });
+
+  /**
+   * Deliberately open to any signed-in user: verification has to be frictionless
+   * or nobody does it, and the answer reveals nothing an attacker does not
+   * already know -- they hold the file.
+   */
+  app.get('/api/media/:sha256', (req, res) => {
+    requireUser(req);
+    ok(res, lookupMedia(String(req.params.sha256).toLowerCase()));
+  });
+
+  app.get('/api/media', (req, res) => {
+    requireUser(req);
+    ok(res, recentMedia(Number(req.query.limit ?? 50)));
   });
 
   /* --------------------------------------------------------------------
