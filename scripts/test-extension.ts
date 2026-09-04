@@ -14,6 +14,8 @@
  */
 import {
   api,
+  approve,
+  approveEnrollments,
   captureEvidence,
   composeIntent,
   confirmChallenge,
@@ -22,8 +24,10 @@ import {
   fmt,
   login,
   lookupClaim,
+  lookupMedia,
   raiseChallenge,
   sha256,
+  signMedia,
   submitIntent,
   type CallerChallenge,
   type Device,
@@ -69,6 +73,9 @@ async function main() {
 
   const ceo = await enroll('u_rahul', 'Rahul Phone (CEO)');
   const cfo = await enroll('u_priya', 'Priya Phone (CFO)');
+  const cto = await enroll('u_anita', 'Anita Phone (CTO)');
+  const treasury = await enroll('u_vikram', 'Vikram Phone (Treasury)');
+  await approveEnrollments([ceo, cfo]);
   const employeeDevice: Device = {
     id: 'u_aravind',
     name: employeeSession.user.name,
@@ -94,20 +101,12 @@ async function main() {
     `verdict: ${fakeLookup.verdict}`,
   );
 
-  // Positive lookup: Check recent genuine transaction from audit
-  const auditEntries = await api<Array<{ txn_id: string; type: string }>>(
-    '/api/audit?limit=100',
-    { token: employeeSession.token },
-  );
-  const existingTxn = auditEntries.find((e) => e.txn_id && !e.txn_id.includes('BOGUS') && !e.txn_id.includes('FORGED') && !e.txn_id.includes('ATK'))?.txn_id;
-  if (existingTxn) {
-    const realLookup = await lookupClaim(employeeDevice, existingTxn);
-    assert(
-      `Extension confirms genuine transaction in ledger: ${existingTxn}`,
-      realLookup.exists && realLookup.authorized,
-      `verdict: ${realLookup.verdict}, headline: ${realLookup.headline}`,
-    );
-  } else {
+  // Positive lookup: Check recent genuine transaction from escrows
+  const activeEscrows = await api<Array<{ txn_id: string; state: string }>>('/api/escrows', {
+    token: employeeSession.token,
+  });
+  let realLookupTxn = activeEscrows.find((e) => e.state === 'EXECUTED' || e.state === 'PENDING_QUORUM')?.txn_id;
+  if (!realLookupTxn) {
     const draft = composeIntent(cfo, {
       org_id: 'acme-corp',
       type: 'wire_transfer',
@@ -122,13 +121,14 @@ async function main() {
       method: 'POST',
       token: employeeSession.token,
     });
-    const realLookup = await lookupClaim(employeeDevice, draft.intent.txn_id);
-    assert(
-      `Extension confirms genuine transaction in ledger: ${draft.intent.txn_id}`,
-      realLookup.exists && realLookup.authorized,
-      `verdict: ${realLookup.verdict}`,
-    );
+    realLookupTxn = draft.intent.txn_id;
   }
+  const realLookup = await lookupClaim(employeeDevice, realLookupTxn);
+  assert(
+    `Extension confirms genuine transaction in ledger: ${realLookupTxn}`,
+    realLookup.exists && realLookup.authorized,
+    `verdict: ${realLookup.verdict}, headline: ${realLookup.headline}`,
+  );
 
   /* ------------------------------------------------------------------------
    * 3. Caller Challenge: Deepfake Impersonation Call Blocked
@@ -232,6 +232,127 @@ async function main() {
     'Audit forward hash chain completely intact',
     m.audit.chain_ok && m.audit.break_at_seq === null,
     `verified ${m.audit.entries} entries without breaks (${m.audit.completeness_pct}% complete)`,
+  );
+
+  /* ------------------------------------------------------------------------
+   * 7. WhatsApp Media Detection & Verification (Unsigned Warning)
+   * ---------------------------------------------------------------------- */
+  fmt.title('Step 7: WhatsApp Media Detection & Signature Verification');
+
+  const invoiceBytes = Buffer.from(`SEAL_SIMULATED_VENDOR_INVOICE_IMAGE_BYTES_${Date.now()}_${Math.random()}`);
+  const invoiceHash = sha256(invoiceBytes.toString('utf8'));
+
+  // Negative verification: Extension detects invoice on WhatsApp, hashes locally, checks ledger
+  const unsignedLookup = await lookupMedia(employeeDevice, invoiceHash);
+  assert(
+    'Extension flags unverified media on WhatsApp Web',
+    !unsignedLookup.signed && unsignedLookup.attestations.length === 0,
+    `headline: "${unsignedLookup.headline}"`,
+  );
+
+  /* ------------------------------------------------------------------------
+   * 8. In-Situ Digital Signing of Media by Executive Device Key
+   * ---------------------------------------------------------------------- */
+  fmt.title('Step 8: In-Situ Digital Signing of Media by Executive');
+
+  const mediaRecord = await signMedia(ceo, {
+    sha256: invoiceHash,
+    kind: 'IMAGE',
+    bytes: invoiceBytes.length,
+    caption: 'Invoice #AL-9842 verified and approved by CEO Rahul Menon',
+  });
+
+  assert(
+    'Executive cryptographically signs media hash using Ed25519 device key',
+    mediaRecord.sha256 === invoiceHash && mediaRecord.signer_id === ceo.id,
+    `signer: ${mediaRecord.signer_name} (${mediaRecord.signer_role}), audit seq #${mediaRecord.audit_seq}`,
+  );
+
+  // Recipient / employee re-verifies media
+  const signedLookup = await lookupMedia(employeeDevice, invoiceHash);
+  assert(
+    'Extension displays verified executive provenance for signed WhatsApp media',
+    signedLookup.signed && signedLookup.attestations[0].signer_id === ceo.id,
+    `provenance: signed by ${signedLookup.attestations[0].signer_name} · ${signedLookup.attestations[0].device_kind} key`,
+  );
+
+  /* ------------------------------------------------------------------------
+   * 9. Escrow Creation Directly from WhatsApp Signed Media
+   * ---------------------------------------------------------------------- */
+  fmt.title('Step 9: Escrow Creation Bound to WhatsApp Signed Media');
+
+  const intentDraft = composeIntent(ceo, {
+    org_id: 'acme-corp',
+    type: 'wire_transfer',
+    payee: { name: 'Alton Logistics Pvt Ltd', account: '50100234564419', ifsc: 'HDFC0001234' },
+    amount: { value: '4200000.00', currency: 'INR' },
+    purpose: `Authorized WhatsApp invoice Media #${invoiceHash.slice(0, 12)}`,
+    media_sha256: invoiceHash,
+    deadline: new Date(Date.now() + 86400000).toISOString(),
+    validityMinutes: 60,
+  });
+
+  await submitIntent(ceo, intentDraft.intent);
+  const escrow = await api<{
+    escrow_id: string;
+    txn_id: string;
+    state: string;
+    required_approvals: number;
+  }>(`/api/intents/${intentDraft.intent.txn_id}/accept`, {
+    method: 'POST',
+    token: employeeSession.token,
+  });
+
+  assert(
+    'Time-boxed SEAL escrow opened directly from verified media',
+    !!escrow.escrow_id && escrow.state === 'PENDING_QUORUM',
+    `escrow: ${escrow.escrow_id} (Txn: ${escrow.txn_id}, requires ${escrow.required_approvals} approvals)`,
+  );
+
+  // Verify that lookupMedia now links directly to the active escrow
+  const lookupWithEscrow = await lookupMedia(employeeDevice, invoiceHash);
+  assert(
+    'Extension media lookup reports active linked escrow',
+    lookupWithEscrow.escrows !== undefined && lookupWithEscrow.escrows.length > 0,
+    `found linked escrow #${lookupWithEscrow.escrows?.[0]?.txn_id}`,
+  );
+
+  /* ------------------------------------------------------------------------
+   * 10. Extension Notification & Quorum Settlement on RTGS Rail
+   * ---------------------------------------------------------------------- */
+  fmt.title('Step 10: Extension Approver Notification & Quorum Settlement');
+
+  // Approver (CFO Priya Nair) reviews pending escrows in extension
+  const pendingEscrows = await api<Array<{ escrow_id: string; state: string }>>('/api/escrows', {
+    token: cfo.token,
+  });
+  assert(
+    'Pending escrow appears in approver extension queue',
+    pendingEscrows.some((e) => e.escrow_id === escrow.escrow_id && e.state === 'PENDING_QUORUM'),
+  );
+
+  // Approvers sign approval assertions using their device keys
+  await approve(cfo, escrow.escrow_id, 'APPROVE');
+  if (escrow.required_approvals > 1) {
+    await approve(cto, escrow.escrow_id, 'APPROVE');
+  }
+  if (escrow.required_approvals > 2) {
+    await approve(treasury, escrow.escrow_id, 'APPROVE');
+  }
+
+  // Check that the quorum is satisfied and escrow settled on RTGS rail
+  const settledEscrow = await api<{
+    escrow_id: string;
+    state: string;
+    receipt: { ok: boolean; reference?: string; utr?: string; settled_at?: string } | null;
+  }>(`/api/escrows/${escrow.escrow_id}`, {
+    token: employeeSession.token,
+  });
+
+  assert(
+    'Escrow achieves quorum and executes settlement on RTGS rail',
+    settledEscrow.state === 'EXECUTED' && settledEscrow.receipt?.ok === true,
+    `status: ${settledEscrow.state}, bank ref: ${settledEscrow.receipt?.reference ?? settledEscrow.receipt?.utr}`,
   );
 
   console.log(`
