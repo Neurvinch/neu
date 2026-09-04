@@ -23,7 +23,8 @@
     "check": "tsx scripts/check-credential.ts",
     "auth": "npm run dev -w @seal/authenticator",
     "test:ext": "tsx scripts/test-extension.ts",
-    "build:ext": "npm run build -w @seal/extension"
+    "build:ext": "npm run build -w @seal/extension",
+    "check:ext": "tsx scripts/check-extension.ts"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
