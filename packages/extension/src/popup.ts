@@ -132,9 +132,10 @@ async function signIn() {
 
 async function inbox() {
   main.innerHTML = `<p class="dim">Loading…</p>`;
-  const [requests, challenges] = await Promise.all([
+  const [requests, challenges, escrows] = await Promise.all([
     send<SigningRequest[]>({ type: 'SIGNING_REQUESTS' }).catch(() => [] as SigningRequest[]),
     send<CallerChallenge[]>({ type: 'CHALLENGES' }).catch(() => [] as CallerChallenge[]),
+    send<EscrowView[]>({ type: 'ESCROWS' }).catch(() => [] as EscrowView[]),
   ]);
 
   const myChallenges = challenges.filter(
@@ -143,11 +144,22 @@ async function inbox() {
   const myRequests = requests.filter(
     (r) => r.state === 'PENDING' && r.subject_user_id === state.userId,
   );
+  const myPendingEscrows = escrows.filter(
+    (e) =>
+      e.state === 'PENDING_QUORUM' &&
+      ['CEO', 'CTO', 'TREASURY', 'CFO'].includes(state.userRole ?? '') &&
+      e.opened_by !== state.userId &&
+      e.intent.originator.user_id !== state.userId &&
+      !e.approvals.some((a) => a.approver_id === state.userId) &&
+      !myRequests.some(
+        (r) => r.action.kind === 'RECORD_APPROVAL' && (r.action as { escrow_id?: string }).escrow_id === e.escrow_id,
+      ),
+  );
 
   const dot = document.getElementById('inbox-dot')!;
-  dot.hidden = myChallenges.length + myRequests.length === 0;
+  dot.hidden = myChallenges.length + myRequests.length + myPendingEscrows.length === 0;
 
-  if (myChallenges.length === 0 && myRequests.length === 0) {
+  if (myChallenges.length === 0 && myRequests.length === 0 && myPendingEscrows.length === 0) {
     main.innerHTML = `
       <div class="empty">
         <div style="font-size:22px;margin-bottom:6px">✓</div>
@@ -164,10 +176,16 @@ async function inbox() {
   }
 
   main.innerHTML =
-    myChallenges.map(challengeCard).join('') + myRequests.map(requestCard).join('');
+    myChallenges.map(challengeCard).join('') +
+    myRequests.map(requestCard).join('') +
+    (myPendingEscrows.length > 0
+      ? `<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim);margin:14px 0 6px">Escrows awaiting your quorum approval</div>` +
+        myPendingEscrows.map(escrowCard).join('')
+      : '');
 
   for (const c of myChallenges) wireChallenge(c);
   for (const r of myRequests) wireRequest(r);
+  for (const e of myPendingEscrows) wireEscrow(e);
 }
 
 /**
@@ -359,30 +377,39 @@ async function pay() {
   }
 
   for (const e of live) {
-    const card = main.querySelector<HTMLElement>(`[data-esc="${e.escrow_id}"]`);
-    card?.querySelectorAll<HTMLButtonElement>('[data-decision]').forEach((b) => {
-      b.onclick = async () => {
-        try {
-          await send({
-            type: 'REQUEST_APPROVAL',
-            escrowId: e.escrow_id,
-            decision: b.dataset.decision,
-          });
-          tab = 'inbox';
-          await render();
-        } catch (err) {
-          card.insertAdjacentHTML(
-            'beforeend',
-            `<p class="error">${esc((err as Error).message)}</p>`,
-          );
-        }
-      };
-    });
+    wireEscrow(e);
   }
+}
+
+function wireEscrow(e: EscrowView) {
+  const card = main.querySelector<HTMLElement>(`[data-esc="${e.escrow_id}"]`);
+  if (!card) return;
+  card.querySelectorAll<HTMLButtonElement>('[data-decision]').forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await send({
+          type: 'REQUEST_APPROVAL',
+          escrowId: e.escrow_id,
+          decision: b.dataset.decision,
+        });
+        tab = 'inbox';
+        await render();
+      } catch (err) {
+        card.insertAdjacentHTML(
+          'beforeend',
+          `<p class="error">${esc((err as Error).message)}</p>`,
+        );
+      }
+    };
+  });
 }
 
 function escrowCard(e: EscrowView): string {
   const approvals = e.approvals.filter((a) => a.decision === 'APPROVE').length;
+  const mediaShaMatch = e.intent.purpose.match(/Media #([0-9a-fA-F]+)/i) ||
+    e.intent.purpose.match(/([0-9a-f]{64})/i);
+  const mediaDigest = mediaShaMatch ? mediaShaMatch[1].slice(0, 12) : null;
+
   return `
     <div class="card" data-esc="${esc(e.escrow_id)}">
       <div class="row">
@@ -392,7 +419,8 @@ function escrowCard(e: EscrowView): string {
         <span class="mono">${esc(formatINR(e.intent.amount.value))}</span>
       </div>
       <div style="margin-top:6px;font-weight:600">${esc(e.intent.payee.name)}</div>
-      <div class="dim mono">${esc(e.intent.payee.account)}</div>
+      <div class="dim mono">${esc(e.intent.payee.account)} · IFSC ${esc(e.intent.payee.ifsc)}</div>
+      ${mediaDigest ? `<div style="margin-top:4px"><span class="badge" style="background:#162438;border:1px solid #2f4d75;color:#8ab4f8;font-size:10px">WhatsApp Media #${esc(mediaDigest)}… verified</span></div>` : ''}
       <div class="dim" style="font-size:11px;margin-top:4px">
         ${approvals}/${e.required_approvals} approvals · ${Math.round(e.seconds_remaining / 60)} min left
       </div>
