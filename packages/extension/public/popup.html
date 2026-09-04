@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SEAL</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark">SEAL</span>
+      <span class="sub" id="tier"></span>
+      <span class="who" id="who"></span>
+    </header>
+    <nav class="tabs" id="tabs" hidden>
+      <button class="tab active" data-tab="inbox">Inbox<i id="inbox-dot" hidden></i></button>
+      <button class="tab" data-tab="pay">Pay</button>
+      <button class="tab" data-tab="verify">Verify</button>
+      <button class="tab" data-tab="key">Key</button>
+    </nav>
+    <main id="main"></main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
