@@ -24,6 +24,7 @@ Detection is a risk *signal*; it is never the gate.
 npm install
 npm run seed        # 7 people, 3 verified vendors, zero credentials (by design)
 npm run dev         # rail :4001 · SEAL :4000 · console :5173 · Authenticator :5174
+npm run build:ext   # then load packages/extension/dist as an unpacked extension
 ```
 
 Open the **console** at <http://localhost:5173> and the **SEAL Authenticator** at
@@ -31,7 +32,7 @@ Open the **console** at <http://localhost:5173> and the **SEAL Authenticator** a
 point. Every seeded account uses the password `demo`.
 
 ```bash
-npm run sim         # end-to-end walkthrough + 51-check attack suite
+npm run sim         # end-to-end walkthrough + 66-check attack suite
 npm run check       # the device credential code, exercised headlessly
 npm run reset       # wipe the database, the ledger, the key directory
 ```
@@ -142,37 +143,82 @@ says it in words, so nobody has to hold a vendor master in their head while bein
 
 ---
 
-## The browser extension
+## The extension, on WhatsApp Web
 
-The attack does not arrive in the console. It arrives in WhatsApp Web, in a mail tab, in a meeting
-window. So there is an unpacked MV3 extension in `packages/extension` that puts the ledger where the
-message lands.
+The attack does not arrive in a console. It arrives as a voice note, a video, a
+message. So the whole flow — verify, sign, pay, approve — lives in a browser
+extension that sits in the tab where the message lands.
 
-**Load it:** Chrome → `chrome://extensions` → Developer mode → *Load unpacked* → select
-`packages/extension`. Sign in through its popup; set the server under *Options* if SEAL is not on
-`localhost:4000`.
+```bash
+npm run build:ext
+```
 
-It is **not a deepfake detector**, and it never scores a face or a voice. It answers three questions
-that have crisp answers:
+Chrome → `chrome://extensions` → Developer mode → **Load unpacked** →
+`packages/extension/dist`. Sign in, set a passphrase, and the extension
+generates its own key.
 
-| Question | How |
-|---|---|
-| *Is this payment actually authorized?* | Right-click a message → the ledger answers. Usually: **no such authorization exists**. |
-| *Is this really the CFO?* | One click raises a caller challenge without leaving the chat. |
-| *Can we prove this arrived?* | Right-click a voice note or video → hashed **locally**, digest chained as evidence. The media never leaves the machine. |
+### 1. Every media bubble gets checked, before anyone acts
 
-The passive badge it injects is honest about what it detected. It matches *payment-instruction
-language* — an IFSC pattern next to a rupee figure, "wire", "beneficiary", "before EOD" — which is a
-boring, reliable text match. It never claims a message is fake:
+Open WhatsApp Web and every photo, video and voice note picks up a chip. It
+verifies on sight — nobody has to remember to check:
 
-> **SEAL** · Payment instructions **plus urgency** — the exact shape of this attack.
-> `[Check TX-4A2B1C]` `[Verify the sender]`
+> **SEAL** · signed by Priya Nair · CFO
+> 04 Sep, 11:42 · authenticator key. Provenance, not proof the contents are true.
 
-Evidence capture answers the problem statement's complaint about fragmentation directly: telephony
-and chat context normally live in a different system from the payment record and only get correlated
-after an incident. Here the claim *"someone sent me this voice note demanding a transfer"* becomes an
-entry in the same hash chain as the payment, at the moment it happens, with the platform, the sender
-handle, the URL and the media digest.
+> **SEAL** · unsigned — nobody has vouched for this file
+> Not proof it is fake. It means nothing verifies where it came from.
+
+That wording is the entire product argument. It never says *fake*, because it
+cannot know that. It says **unsigned**, which it does know, and which is the
+useful fact: in an organisation where genuine executive media carries a
+signature, the forgery is the one with nothing attached to it.
+
+The digest is computed in the page, over the delivered bytes. **The file never
+leaves the machine** — only a SHA-256 goes to the ledger.
+
+### 2. Signing your own
+
+On a message you sent, the chip also offers **Sign as mine**. One passphrase
+unlocks the key for five minutes so a batch of clips does not mean five
+prompts.
+
+The subtlety worth knowing: you sign **after** posting, not before. WhatsApp
+re-encodes media on upload, so a signature over the file you picked off disk
+would not match the file anyone receives. Signing what was delivered sidesteps
+that completely — and the sim proves a single altered byte drops the signature.
+
+### 3. Payments, without leaving the tab
+
+The popup carries the rest: **Inbox** (signature requests and caller challenges,
+first and default, because those arrive unprompted), **Pay** (compose an intent,
+approve someone else's escrow), **Verify** (challenge a caller), **Key**.
+
+### What this costs, stated plainly
+
+A key in the extension is a **new custody tier**, and it sits between the two
+that existed:
+
+| | reachable by a compromised web page | on the same machine as the browser |
+|---|---|---|
+| console key | **yes** — barred for executives | yes |
+| **extension key** | no — extension storage is its own origin | yes, **+8 risk** |
+| authenticator (phone) | no | no, **+5 risk** |
+| hardware key | no | no, **no premium** |
+
+So putting everything in the extension buys convenience and gives up the
+out-of-band property. A compromised laptop can now both compose a payment and
+hold the key that signs it. That is a real reduction and the system prices it:
+approver screens show `extension key`, and the risk engine adds the premium to
+every payment signed with one.
+
+Two guardrails remain regardless of tier:
+
+- **Money always re-asks for the passphrase.** The five-minute unlock applies to
+  `MEDIA` signatures only. `INTENT` and `APPROVAL` demand it every single time,
+  so `user_presence` on those envelopes stays a true statement.
+- **A signature carries its own custody tier**, inside the signed bytes. An
+  extension key cannot claim to be a phone in transit — the sim asserts exactly
+  this (`DEVICE_KIND_MISMATCH`).
 
 ---
 
@@ -181,15 +227,15 @@ handle, the URL and the media digest.
 Where a key lives is policy-bearing, not a deployment detail. `device_kind` is a column, a field
 inside every signature, a risk input, and a check the payment rail makes on its own authority.
 
-| | **console** | **authenticator** | **hardware** |
-|---|---|---|---|
-| Where the key is | the browser that composes payments | SEAL Authenticator, separate origin | inside a FIDO2 authenticator |
-| Can it be exported? | yes | yes, with the passphrase | **no** |
-| User presence | passphrase per signature | passphrase per signature | fingerprint / face / touch |
-| Malware on that device | can sign as you | can eventually copy the key | **cannot sign** — no gesture |
-| Phishing / origin binding | none | none | free, browser-enforced |
-| Risk premium | +12 | +5 | **0** |
-| Executives may use it | **no — refused** | yes | yes, preferred |
+| | **console** | **extension** | **authenticator** | **hardware** |
+|---|---|---|---|---|
+| Where the key is | the page that composes payments | extension storage, its own origin | SEAL Authenticator, separate device | inside a FIDO2 authenticator |
+| Reachable by a compromised web page | **yes** | no | no | no |
+| On the same machine as the browser | yes | yes | no | no |
+| Can it be exported? | yes | yes, with the passphrase | yes, with the passphrase | **no** |
+| User presence | passphrase per signature | passphrase per payment | passphrase per signature | fingerprint / face / touch |
+| Risk premium | +12 | +8 | +5 | **0** |
+| Executives may use it | **no — refused** | yes | yes | yes, preferred |
 
 `CONSOLE_KEY_NOT_PERMITTED` is enforced in three places on purpose: when a key is enrolled, when a
 signature is used, and again at the payment rail — which applies its own copy of the rule, so
@@ -270,7 +316,8 @@ packages/server          API, SQLite, risk engine, escrow lifecycle, hash-chaine
 packages/bank            the mock payment rail — the enforcement point, verifies independently
 packages/web             the console (:5173) — composes, never signs
 packages/authenticator   the SEAL Authenticator (:5174) — holds the keys, the only thing that signs
-packages/extension       unpacked MV3 browser extension — the ledger, where the message lands
+packages/extension       MV3 browser extension — verify/sign media, pay and approve on WhatsApp Web
+  build.mjs              esbuild bundle; Chrome loads dist/
 scripts/simulate         the walkthrough and the attack suite
 scripts/check-credential the device vault + signer, run headlessly
 ```
