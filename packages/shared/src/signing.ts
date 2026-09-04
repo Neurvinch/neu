@@ -91,7 +91,7 @@ export interface SoftwareSignerOptions {
   /** 32-byte Ed25519 seed. Never leaves the device it was generated on. */
   privateKey: Uint8Array;
   counters: CounterStore;
-  deviceKind: 'console' | 'authenticator';
+  deviceKind: 'console' | 'extension' | 'authenticator';
   /** Set by the caller once the passphrase gate has been satisfied. */
   userPresence?: boolean;
 }
@@ -137,7 +137,8 @@ export async function publicKeyFrom(privateKey: Uint8Array): Promise<string> {
 /** Deterministic credential id, so the same key never enrols twice under two names. */
 export async function credentialIdFor(material: string, kind: DeviceKind) {
   const h = await sha256Hex(utf8(material));
-  const prefix = kind === 'hardware' ? 'hw' : kind === 'authenticator' ? 'auth' : 'sw';
+  const prefix =
+    kind === 'hardware' ? 'hw' : kind === 'authenticator' ? 'auth' : kind === 'extension' ? 'ext' : 'sw';
   return `${prefix}_${h.slice(0, 20)}`;
 }
 
