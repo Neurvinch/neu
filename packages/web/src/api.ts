@@ -19,13 +19,19 @@ export function getToken() {
 
 export async function api<T = unknown>(
   path: string,
-  opts: { method?: string; body?: unknown } = {},
+  /**
+   * `token` overrides the signed-in session for one call. The vishing lab uses
+   * it to drive both ends of a caller challenge from a single screen; nothing
+   * in the real flows passes it.
+   */
+  opts: { method?: string; body?: unknown; token?: string } = {},
 ): Promise<T> {
+  const bearer = opts.token ?? token;
   const res = await fetch(path, {
     method: opts.method ?? (opts.body ? 'POST' : 'GET'),
     headers: {
       'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
