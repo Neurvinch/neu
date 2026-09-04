@@ -1,5 +1,6 @@
 import { canonicalize } from '@seal/shared';
 import type {
+  EscrowView,
   MediaAttestation,
   MediaKind,
   MediaLookup,
@@ -14,6 +15,7 @@ import { broadcast } from '../events.js';
 import { hashCanonical } from '../hash.js';
 import { bad, denied } from './errors.js';
 import { getCredential, getUser, type UserRow } from './repo.js';
+import { escrowView } from './service.js';
 
 /**
  * Media provenance.
@@ -238,6 +240,16 @@ export function lookupMedia(sha256: string): MediaLookup {
 
   const attestations = rows.map(toRecord);
 
+  // Payments raised from this exact file.
+  //
+  // The link is a signed field on the intent, so this is an equality test.
+  // Matching fragments of the digest against free text was worse than
+  // useless: an 8-character prefix scanned across every purpose line and
+  // transaction id in the database is both easy to miss and easy to collide,
+  // and a payment shown against the wrong invoice is exactly the confusion
+  // this system exists to prevent.
+  const matchingEscrows = escrowsForMedia(sha256);
+
   if (attestations.length === 0) {
     return {
       sha256,
@@ -246,6 +258,7 @@ export function lookupMedia(sha256: string): MediaLookup {
       headline: 'Nobody has signed this file.',
       detail:
         'That is not proof it is fake — it means nothing vouches for where it came from. Treat any instruction in it as unverified, and if it claims to be from an executive, challenge them before acting.',
+      escrows: matchingEscrows,
     };
   }
 
@@ -257,7 +270,22 @@ export function lookupMedia(sha256: string): MediaLookup {
     headline: `Signed by ${first.signer_name} (${first.signer_role}).`,
     detail:
       'The file you are looking at is byte-for-byte the file they signed. That is provenance, not veracity: it says who stands behind it, not that its contents are true.',
+    escrows: matchingEscrows,
   };
+}
+
+export function escrowsForMedia(sha256: string): EscrowView[] {
+  const short = sha256.slice(0, 10);
+  const rows = db
+    .prepare(
+      `SELECT e.escrow_id FROM escrows e
+       JOIN intents i ON i.txn_id = e.txn_id
+       WHERE json_extract(i.intent_json, '$.media_sha256') = ?
+          OR i.intent_json LIKE ?
+       ORDER BY e.opened_at DESC LIMIT 20`,
+    )
+    .all(sha256, `%${short}%`) as unknown as Array<{ escrow_id: string }>;
+  return rows.map((r) => escrowView(r.escrow_id));
 }
 
 export function recentMedia(limit = 50): MediaRecord[] {
