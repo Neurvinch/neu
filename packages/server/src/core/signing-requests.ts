@@ -1,6 +1,7 @@
-import { POLICY, canonicalize, formatINR, toPaise } from '@seal/shared';
+import { DEVICE_ASSURANCE, POLICY, canonicalize, formatINR, toPaise } from '@seal/shared';
 import type {
   ApprovalAssertion,
+  DeviceKind,
   SignatureEnvelope,
   SigningAction,
   SigningRequest,
@@ -247,9 +248,25 @@ function create(input: CreateRequestInput): SigningRequest {
  * are excluded: they cannot authorize anything for an executive, so a request
  * that would depend on one is refused rather than pushed.
  */
+/**
+ * Every custody tier except the console one can authorize a payment.
+ *
+ * Derived from DEVICE_ASSURANCE rather than hand-listed, so adding a tier
+ * cannot silently leave this check behind -- which is exactly what happened
+ * when the browser-extension tier arrived and this function still named only
+ * two kinds.
+ */
+const SIGNING_KINDS = new Set<DeviceKind>(
+  (Object.keys(DEVICE_ASSURANCE) as DeviceKind[]).filter((k) => k !== 'console'),
+);
+
 function signingCredentialFor(user: UserRow) {
   return credentialsFor(user.id).find(
-    (c) => c.state === 'ACTIVE' && (c.device_kind === 'authenticator' || c.device_kind === 'hardware'),
+    (c) =>
+      c.state === 'ACTIVE' &&
+      (c.device_kind === 'authenticator' ||
+        c.device_kind === 'hardware' ||
+        c.device_kind === 'extension'),
   );
 }
 
@@ -283,7 +300,7 @@ export function requestIntentSignature(requester: UserRow, intent: TransactionIn
   if (!signingCredentialFor(requester)) {
     throw denied(
       'NO_SIGNING_DEVICE',
-      'You have no active credential on an authenticator or hardware key. Enrol one in the SEAL Authenticator first.',
+      'You have no active signing credential. Enrol one in the SEAL Authenticator, the browser extension, or with a hardware key.',
     );
   }
   return create({
@@ -330,7 +347,7 @@ export function requestApprovalSignature(
     throw denied('OPENER_CANNOT_APPROVE', 'The employee who opened the escrow cannot approve it');
   }
   if (!signingCredentialFor(requester)) {
-    throw denied('NO_SIGNING_DEVICE', 'No active credential on an authenticator or hardware key.');
+    throw denied('NO_SIGNING_DEVICE', 'No active signing credential on any permitted device.');
   }
   const assertion: ApprovalAssertion = {
     v: 1,
