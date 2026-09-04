@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS credentials (
   binding       TEXT NOT NULL CHECK (binding IN ('software','hardware')),
   -- Where the key physically lives. This is policy-bearing, not cosmetic:
   -- executives may not sign with a console-resident key.
-  device_kind   TEXT NOT NULL CHECK (device_kind IN ('console','authenticator','hardware')),
+  device_kind   TEXT NOT NULL CHECK (device_kind IN ('console','extension','authenticator','hardware')),
   public_key    TEXT NOT NULL,
   -- Hardware only: the raw credential id the authenticator issued, and its
   -- model identifier. Null for software credentials.
@@ -68,6 +68,30 @@ CREATE TABLE IF NOT EXISTS signing_requests (
   error           TEXT,
   result_json     TEXT
 );
+
+-- Media provenance.
+--
+-- One row per (file, signer). The digest is of the bytes as delivered, computed
+-- independently on the signer's machine and on every recipient's, so nothing
+-- here depends on trusting whoever uploaded it.
+CREATE TABLE IF NOT EXISTS media_attestations (
+  sha256           TEXT NOT NULL,
+  kind             TEXT NOT NULL CHECK (kind IN ('IMAGE','VIDEO','AUDIO','FILE')),
+  bytes            INTEGER NOT NULL,
+  platform         TEXT NOT NULL,
+  caption          TEXT NOT NULL DEFAULT '',
+  signer_id        TEXT NOT NULL REFERENCES users(id),
+  credential_id    TEXT NOT NULL,
+  device_kind      TEXT NOT NULL,
+  attestation_json TEXT NOT NULL,
+  envelope_json    TEXT NOT NULL,
+  signed_at        TEXT NOT NULL,
+  recorded_at      TEXT NOT NULL,
+  audit_seq        INTEGER NOT NULL,
+  PRIMARY KEY (sha256, signer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_sha ON media_attestations(sha256);
 
 -- Caller challenges.
 --
