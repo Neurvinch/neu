@@ -14,6 +14,7 @@
  * regression suite. A block for the wrong reason is reported as a failure.
  */
 import {
+  canonicalize,
   createSoftwareSigner,
   credentialIdFor,
   generateKeyPair,
@@ -28,6 +29,7 @@ import {
   approveEnrollments,
   captureEvidence,
   composeIntent,
+  digestOf,
   confirmChallenge,
   decline,
   denyChallenge,
@@ -35,8 +37,11 @@ import {
   fmt,
   fulfil,
   lookupClaim,
+  lookupMedia,
   raiseChallenge,
   requestIntent,
+  sha256,
+  signMedia,
   submitIntent,
   type ApiError,
   type Device,
@@ -95,6 +100,16 @@ function assert(label: string, condition: boolean, detail = '') {
 }
 
 const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+
+/**
+ * A tag unique to this run, folded into the simulated media bytes.
+ *
+ * Real files differ from each other; these string stand-ins would not, and a
+ * digest that repeated across runs would collide with the "already signed"
+ * guard. Within a single run the bytes stay stable, which is what lets the
+ * altered-byte check mean something.
+ */
+const RUN = Date.now().toString(36);
 
 async function main() {
   await api('/api/health').catch(() => {
@@ -698,6 +713,166 @@ async function main() {
         kind: 'AUDIO',
         media_sha256: 'not-a-digest',
       }),
+  );
+
+  /* =======================================================================
+   * Act 4c -- signed media, the way the extension does it
+   *
+   * The deepfake arrives as a video in a chat. Nobody is asked whether it looks
+   * synthetic; the question is whether the person it claims to be from signed
+   * it. A forger can produce a flawless clip and cannot produce her signature.
+   * ===================================================================== */
+  fmt.head('Act 4c -- provenance for the file itself');
+
+  // A genuine clip: the CFO posts it, then signs what was actually delivered.
+  const genuineClip = digestOf(`genuine-cfo-briefing-video-bytes:${RUN}`);
+  const record = await mustPass('CFO signs a video she really sent', () =>
+    signMedia(cfo, {
+      ...genuineClip,
+      kind: 'VIDEO',
+      caption: 'Quarter-end briefing',
+    }),
+  );
+  assert(
+    'The attestation records which custody tier signed it',
+    (record as { device_kind: string }).device_kind === 'authenticator',
+    (record as { device_kind: string }).device_kind,
+  );
+
+  const verified = await lookupMedia(employee, genuineClip.sha256);
+  assert(
+    'A recipient hashing the same bytes sees who signed it',
+    verified.signed && verified.attestations[0].signer_id === cfo.id,
+    verified.headline,
+  );
+  fmt.info(verified.headline);
+
+  // The deepfake. Perfect video, different bytes, nobody has signed it.
+  const forged = digestOf(`flawless-deepfake-of-the-cfo-demanding-a-transfer:${RUN}`);
+  const unverified = await lookupMedia(employee, forged.sha256);
+  assert(
+    'The deepfake comes back unsigned',
+    !unverified.signed && unverified.attestations.length === 0,
+    unverified.headline,
+  );
+  assert(
+    'The headline never accuses the file of being fake',
+    !/(is|likely|probably)s+(as+)?(fake|forgery|deepfake|synthetic)/i.test(unverified.headline),
+    unverified.headline,
+  );
+  assert(
+    'The detail says outright that unsigned is not proof of forgery',
+    /not proof/i.test(unverified.detail),
+    unverified.detail,
+  );
+  fmt.info(unverified.headline);
+
+  // Even one altered byte is a different file, so a signature cannot be moved
+  // from a genuine clip onto a doctored one.
+  const doctored = digestOf(`genuine-cfo-briefing-video-bytes:${RUN}.`);
+  const moved = await lookupMedia(employee, doctored.sha256);
+  assert('A single altered byte drops the signature', !moved.signed, moved.headline);
+
+  await mustFail(
+    'An attacker signs the deepfake as the CFO with their own key',
+    'UNKNOWN_CREDENTIAL',
+    async () => {
+      const attacker = await forgedDevice('u_priya', 'CFO');
+      attacker.token = cfo.token;
+      return signMedia(attacker, { ...forged, kind: 'VIDEO', caption: 'Definitely me' });
+    },
+  );
+
+  await mustFail(
+    'Someone signs a file while naming a different person as the signer',
+    'SIGNER_MISMATCH',
+    async () => {
+      const attestation = await api<Record<string, unknown>>('/api/media/attestation', {
+        body: {
+          sha256: forged.sha256,
+          kind: 'VIDEO',
+          bytes: forged.bytes,
+          platform: 'WhatsApp Web',
+          caption: 'x',
+        },
+        token: ceo.token,
+      });
+      const tampered = { ...attestation, signer_id: cfo.id };
+      const signature = await ceo.signer.sign('MEDIA', sha256(canonicalize(tampered)));
+      return api('/api/media/sign', {
+        body: { attestation: tampered, signature },
+        token: ceo.token,
+      });
+    },
+  );
+
+  await mustFail('The same file is signed twice by the same person', 'ALREADY_SIGNED', () =>
+    signMedia(cfo, { ...genuineClip, kind: 'VIDEO', caption: 'again' }),
+  );
+
+  await mustFail(
+    'A media signature is replayed as a payment authorization',
+    ['SIGNATURE_PURPOSE_MISMATCH', 'SIGNATURE_PAYLOAD_HASH_MISMATCH'],
+    async () => {
+      const request = await requestIntent(cfo, mule2().intent);
+      const signature = await cfo.signer.sign('MEDIA', request.payload_hash);
+      return api(`/api/signing-requests/${request.id}/fulfil`, {
+        body: { signature },
+        token: cfo.token,
+      });
+    },
+  );
+
+  /* =======================================================================
+   * Act 4d -- the extension as a signing device
+   *
+   * The whole flow without leaving the browser: a key that lives in the
+   * extension's own storage, out of reach of any web page, enrolled through the
+   * same quorum and priced one tier below a phone.
+   * ===================================================================== */
+  fmt.head('Act 4d -- the extension holds a key of its own');
+
+  const treasuryExt = await enroll('u_vikram', 'Vikram browser extension', 'extension');
+  await approveEnrollments([cfo, ceo]);
+  fmt.step(`Treasury extension key ${treasuryExt.credentialId} (${how(treasuryExt)})`);
+
+  assert(
+    'An extension credential is distinguishable at a glance',
+    treasuryExt.credentialId.startsWith('ext_'),
+    treasuryExt.credentialId,
+  );
+
+  const extClip = digestOf(`treasury-voice-note:${RUN}`);
+  const extRecord = await mustPass('The extension key signs a voice note', () =>
+    signMedia(treasuryExt, { ...extClip, kind: 'AUDIO', caption: 'Voice note about the invoice' }),
+  );
+  assert(
+    'The custody tier travels with the attestation',
+    (extRecord as { device_kind: string }).device_kind === 'extension',
+    (extRecord as { device_kind: string }).device_kind,
+  );
+
+  // And money, priced accordingly.
+  const extIntent = composeIntent(treasuryExt, {
+    org_id: 'acme-corp',
+    type: 'wire_transfer',
+    payee: { name: 'Nova Print Services', account: '331299001204', ifsc: 'SBIN0003312' },
+    amount: { value: '90000.00', currency: 'INR' },
+    purpose: 'Print run, authorized from the browser',
+    deadline: inHours(20),
+  });
+  await mustPass('The extension key authorizes a payment intent', () =>
+    submitIntent(treasuryExt, extIntent.intent),
+  );
+  const extEscrow = await api<{ risk: { rules_fired: string[] }; signer: { device_kind: string } }>(
+    `/api/intents/${extIntent.intent.txn_id}/accept`,
+    { method: 'POST', token: employee.token },
+  );
+  assert(
+    'The risk engine prices the extension tier above a phone',
+    extEscrow.signer.device_kind === 'extension' &&
+      extEscrow.risk.rules_fired.includes('SOFTWARE_BOUND_CREDENTIAL'),
+    `${extEscrow.signer.device_kind}: ${extEscrow.risk.rules_fired.join(', ')}`,
   );
 
   /* =======================================================================
