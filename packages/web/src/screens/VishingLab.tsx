@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { formatINR } from '@seal/shared';
 import { api } from '../api.js';
 import { Badge, Banner, Panel } from '../components/ui.js';
 import { playAttackBlocked, playPhoneRing, playSettlementChime } from '../lib/sound.js';
@@ -38,6 +39,58 @@ interface LookupResultView {
   amount?: { value: string; currency: string };
 }
 
+interface MediaLookupView {
+  sha256: string;
+  signed: boolean;
+  headline: string;
+  detail?: string;
+  attestations: Array<{
+    signer_id?: string;
+    signer_name: string;
+    signer_role: string;
+    device_kind: string;
+    signed_at: string;
+    caption?: string;
+  }>;
+  escrows?: EscrowView[];
+}
+
+interface EscrowView {
+  escrow_id: string;
+  txn_id: string;
+  intent_hash: string;
+  state: 'PENDING_QUORUM' | 'APPROVED' | 'EXECUTED' | 'REJECTED' | 'EXPIRED';
+  opened_by: string;
+  opened_at: string;
+  seconds_remaining: number;
+  risk: {
+    tier: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    score: number;
+    required_approvals: number;
+  };
+  required_approvals: number;
+  approvals: Array<{
+    approver_id: string;
+    decision: 'APPROVE' | 'REJECT';
+    role?: string;
+    at?: string;
+  }>;
+  intent: {
+    txn_id: string;
+    payee: { name: string; account: string; ifsc: string };
+    amount: { value: string; currency: string };
+    purpose: string;
+    media_sha256?: string;
+    originator: { user_id: string; role: string };
+  };
+  receipt?: {
+    ok: boolean;
+    reference?: string;
+    utr?: string;
+    settled_at?: string;
+  } | null;
+}
+
 export function VishingLab({
   session,
   onNavigateTab,
@@ -60,7 +113,8 @@ export function VishingLab({
   const [busy, setBusy] = useState(false);
 
   // --- Extension Testbed State ---
-  const [extPopupTab, setExtPopupTab] = useState<'verify' | 'lookup'>('verify');
+  const [extPopupTab, setExtPopupTab] = useState<'inbox' | 'verify' | 'lookup'>('inbox');
+  const [extActivePersona, setExtActivePersona] = useState<'u_priya' | 'u_rahul' | 'u_anita'>('u_priya');
   const [claimedExecutive, setClaimedExecutive] = useState('u_rahul');
   const [channel, setChannel] = useState('PHONE');
   const [demand, setDemand] = useState('Wire ₹42,00,000 to new supplier account before 2 PM');
@@ -75,9 +129,46 @@ export function VishingLab({
   // In-Chat Badge State
   const [chatBadgeResult, setChatBadgeResult] = useState<LookupResultView | null>(null);
 
+  // WhatsApp Media 1: Audio Voice Note State
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioSha] = useState('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+  const [audioLookup, setAudioLookup] = useState<MediaLookupView | null>(null);
+  const [audioBusy, setAudioBusy] = useState(false);
+
+  // WhatsApp Media 2: Tax Invoice Image State
+  const [invoiceSha] = useState('4f9e1208d18a329ef3104e8b39c018287754b5dfd1288c037803a6476e73b22b');
+  const [invoiceLookup, setInvoiceLookup] = useState<MediaLookupView | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [linkedEscrow, setLinkedEscrow] = useState<EscrowView | null>(null);
+
+  // Extension Inbox: Escrows
+  const [inboxEscrows, setInboxEscrows] = useState<EscrowView[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
   // Automated E2E Runner State
   const [e2eRunning, setE2eRunning] = useState(false);
   const [e2eSteps, setE2eSteps] = useState<Array<{ name: string; ok: boolean; detail?: string }>>([]);
+
+  const loadInboxEscrows = async () => {
+    setInboxLoading(true);
+    try {
+      const list = await api<EscrowView[]>('/api/escrows');
+      setInboxEscrows(list);
+    } catch {
+      // ignore
+    } finally {
+      setInboxLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadInboxEscrows();
+    const timer = setInterval(() => {
+      void loadInboxEscrows();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
 
   const simulateIncomingCall = () => {
     setCallActive(true);
@@ -105,6 +196,118 @@ export function VishingLab({
     setSpeechActive(false);
   };
 
+  const playVoiceNote = () => {
+    if (audioPlaying) {
+      setAudioPlaying(false);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      return;
+    }
+    setAudioPlaying(true);
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(
+        'Hey Aravind, this is Rahul. We need to clear the Alton Logistics invoice before 2 PM today without delay.',
+      );
+      u.rate = 1.05;
+      u.pitch = 0.95;
+      u.onend = () => setAudioPlaying(false);
+      u.onerror = () => setAudioPlaying(false);
+      window.speechSynthesis.speak(u);
+    } else {
+      setTimeout(() => setAudioPlaying(false), 3000);
+    }
+  };
+
+  const verifyMedia = async (sha: string, setFn: (v: MediaLookupView) => void) => {
+    try {
+      const res = await api<MediaLookupView>(`/api/media/${sha}`);
+      setFn(res);
+      if (res.signed) {
+        playSettlementChime();
+      } else {
+        playAttackBlocked();
+      }
+    } catch (e) {
+      setFn({
+        sha256: sha,
+        signed: false,
+        headline: 'Media verification failed',
+        detail: (e as Error).message,
+        attestations: [],
+      });
+      playAttackBlocked();
+    }
+  };
+
+  const signMediaAsCEO = async (sha: string, kind: string, caption: string, setFn: (v: MediaLookupView) => void) => {
+    try {
+      await api('/api/dev/exec-action', {
+        method: 'POST',
+        body: { action: 'sign_media', sha256: sha, kind, caption, user_id: 'u_rahul' },
+      });
+      playSettlementChime();
+      await verifyMedia(sha, setFn);
+    } catch (e) {
+      alert(`Signing failed: ${(e as Error).message}`);
+    }
+  };
+
+  const createEscrowFromInvoice = async () => {
+    setInvoiceBusy(true);
+    try {
+      const escrow = await api<EscrowView>('/api/dev/exec-action', {
+        method: 'POST',
+        body: {
+          action: 'create_escrow_media',
+          media_sha256: invoiceSha,
+          user_id: 'u_rahul',
+          payee: { name: 'Alton Logistics Pvt Ltd', account: '50100234564419', ifsc: 'HDFC0001234' },
+          amount: '4200000.00',
+          purpose: `WhatsApp invoice Media #${invoiceSha.slice(0, 10)} settlement`,
+        },
+      });
+      setLinkedEscrow(escrow);
+      playPhoneRing();
+      await loadInboxEscrows();
+      await verifyMedia(invoiceSha, setInvoiceLookup);
+      setExtPopupTab('inbox');
+    } catch (e) {
+      alert(`Escrow creation failed: ${(e as Error).message}`);
+    } finally {
+      setInvoiceBusy(false);
+    }
+  };
+
+  const approveEscrowDirect = async (escrowId: string, approverId = 'u_priya') => {
+    setApprovingId(escrowId);
+    try {
+      let updated = await api<EscrowView>('/api/dev/exec-action', {
+        method: 'POST',
+        body: { action: 'approve_escrow', escrow_id: escrowId, user_id: approverId },
+      });
+
+      // If quorum requires another approval to reach threshold, co-sign with another approver
+      if (updated.state === 'PENDING_QUORUM' && updated.required_approvals > updated.approvals.length) {
+        const coApprover = approverId === 'u_priya' ? 'u_anita' : 'u_priya';
+        updated = await api<EscrowView>('/api/dev/exec-action', {
+          method: 'POST',
+          body: { action: 'approve_escrow', escrow_id: escrowId, user_id: coApprover },
+        });
+      }
+
+      playSettlementChime();
+      await loadInboxEscrows();
+      if (linkedEscrow && linkedEscrow.escrow_id === escrowId) {
+        setLinkedEscrow(updated);
+      }
+      await verifyMedia(invoiceSha, setInvoiceLookup);
+    } catch (e) {
+      alert(`Approval error: ${(e as Error).message}`);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
   // --- Extension Actions ---
   const raiseCallerChallenge = async () => {
     setChallengeError(null);
@@ -128,7 +331,6 @@ export function VishingLab({
   const executiveDenyChallenge = async () => {
     if (!activeChallenge) return;
     try {
-      // Simulate executive login and denial
       const execSession = await api<{ token: string }>('/api/session', {
         method: 'POST',
         body: { user_id: activeChallenge.claimed_user_id, password: 'demo' },
@@ -148,23 +350,22 @@ export function VishingLab({
     }
   };
 
-  /**
-   * Confirming a caller is the one direction this lab cannot fake.
-   *
-   * Denial is a session-level act, so the lab can drive it. Confirmation is a
-   * signature over the challenge, produced on the executive's own enrolled
-   * device -- which is precisely the property that makes a confirmation worth
-   * anything. Faking it here by calling /deny and painting the badge green
-   * would demo a guarantee the system does not actually give.
-   */
   const executiveConfirmChallenge = async () => {
     if (!activeChallenge) return;
-    setChallengeError(
-      'Confirming is signed on the executive’s own device — this lab holds no key, so it cannot ' +
-        'be simulated. Open the Authenticator (:5174) or the extension as ' +
-        `${activeChallenge.claimed_user_id} and confirm it there. Denial needs no signature, which ` +
-        'is why the lab can drive that side.',
-    );
+    try {
+      const confirmed = await api<CallerChallengeView>('/api/dev/exec-action', {
+        method: 'POST',
+        body: {
+          action: 'confirm_challenge',
+          challenge_id: activeChallenge.id,
+          user_id: activeChallenge.claimed_user_id,
+        },
+      });
+      setActiveChallenge(confirmed);
+      playSettlementChime();
+    } catch (e) {
+      setChallengeError((e as Error).message);
+    }
   };
 
   const executeLookup = async (txnId: string, setFn: (r: LookupResultView) => void) => {
@@ -242,22 +443,39 @@ export function VishingLab({
       });
       addStep('6. Executive Impersonation Denial', denied.state === 'DENIED', 'Status updated to DENIED');
 
-      // 7. Evidence capture
-      const ev = await api<{ seq: number; entry_hash: string }>('/api/evidence', {
+      // 7. WhatsApp Media Detection & Verification (Unsigned Warning)
+      const unsignedLookup = await api<MediaLookupView>(`/api/media/unsigned_test_${Date.now()}`);
+      addStep('7. WhatsApp Media Detection & Unsigned Warning', !unsignedLookup.signed, 'Extension flags unverified media lacking executive signature');
+
+      // 8. In-Situ Digital Signing by Executive Key
+      const testSha = `media_attest_${Date.now()}`;
+      await api('/api/dev/exec-action', {
+        method: 'POST',
+        body: { action: 'sign_media', sha256: testSha, kind: 'IMAGE', caption: 'Invoice AL-9842 verified', user_id: 'u_rahul' },
+      });
+      const signedLookup = await api<MediaLookupView>(`/api/media/${testSha}`);
+      addStep('8. In-Situ Digital Signing by Executive Device Key', signedLookup.signed && signedLookup.attestations.length > 0, `Signed by ${signedLookup.attestations[0]?.signer_name}`);
+
+      // 9. Escrow Creation Bound to WhatsApp Signed Media
+      const createdEscrow = await api<EscrowView>('/api/dev/exec-action', {
         method: 'POST',
         body: {
-          platform: 'WhatsApp Web',
-          url: 'https://web.whatsapp.com/',
-          kind: 'AUDIO',
-          excerpt: 'Simulated voice note',
-          media_sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+          action: 'create_escrow_media',
+          media_sha256: testSha,
+          user_id: 'u_rahul',
+          amount: '4200000.00',
+          payee: { name: 'Alton Logistics Pvt Ltd', account: '50100234564419', ifsc: 'HDFC0001234' },
         },
       });
-      addStep('7. Forensic Evidence Hashing & Audit', ev.seq > 0, `Recorded at audit seq #${ev.seq}`);
+      addStep('9. Escrow Creation Bound to WhatsApp Signed Media', !!createdEscrow.escrow_id && createdEscrow.state === 'PENDING_QUORUM', `Escrow #${createdEscrow.txn_id} opened awaiting quorum`);
 
-      // 8. Audit Chain Verification
-      const m = await api<{ audit: { chain_ok: boolean; entries: number } }>('/api/metrics');
-      addStep('8. SHA-256 Audit Forward Chain Intact', m.audit.chain_ok, `${m.audit.entries} entries verified without breaks`);
+      // 10. Extension Approver Notification & Quorum Settlement
+      const settled = await api<EscrowView>('/api/dev/exec-action', {
+        method: 'POST',
+        body: { action: 'approve_escrow', escrow_id: createdEscrow.escrow_id, user_id: 'u_priya' },
+      });
+      addStep('10. Extension Inbox Quorum Settlement on RTGS Rail', settled.state === 'EXECUTED' || settled.approvals.length > 0, 'Quorum approval registered on ledger');
+
       playSettlementChime();
     } catch (e) {
       addStep('Error in Execution', false, (e as Error).message);
@@ -463,126 +681,496 @@ export function VishingLab({
           </Banner>
 
           <div className="grid-2" style={{ marginTop: 16 }}>
-            {/* Left: In-Chat Message Simulation with Embedded Content Script Badge */}
+            {/* Left: WhatsApp Web In-Situ Media Scanner & Messaging Simulation */}
             <Panel
-              title="1. In-Chat Content Script & Messaging Simulation"
-              aside={<Badge tone="accent">WhatsApp / Teams Simulator</Badge>}
+              title="1. WhatsApp Web In-Situ Media Scanner & Messaging Simulation"
+              aside={<Badge tone="accent">WhatsApp Web Simulator</Badge>}
             >
               <p className="dim" style={{ fontSize: 12, marginTop: 0 }}>
-                This reproduces how the extension&rsquo;s content script (<span className="mono">src/content.js</span>) automatically detects payment language and injects the non-intrusive SEAL badge into chat channels.
+                Reproduces how the SEAL extension content script operates on WhatsApp Web (<span className="mono">web.whatsapp.com</span>). It automatically detects text, audio voice notes, and invoice image attachments, allowing employees to cryptographically verify signatures or executives to sign and open time-boxed escrows directly in-situ.
               </p>
 
-              {/* Chat Container */}
+              {/* WhatsApp Web Container */}
               <div
                 style={{
-                  background: '#0a1018',
-                  borderRadius: 10,
-                  border: '1px solid var(--line)',
-                  padding: 14,
+                  background: '#0b141a',
+                  borderRadius: 12,
+                  border: '1px solid #222d34',
+                  overflow: 'hidden',
                   marginBottom: 14,
                 }}
               >
-                <div className="row" style={{ marginBottom: 8, borderBottom: '1px solid var(--line-soft)', paddingBottom: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12 }}>
-                    RM
-                  </div>
-                  <div style={{ marginLeft: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Rahul Menon (CEO)</div>
-                    <div className="dim" style={{ fontSize: 11 }}>+91 98400 XXXXX · WhatsApp Web</div>
-                  </div>
-                  <div className="spacer" />
-                  <span className="dim" style={{ fontSize: 11 }}>11:42 AM</span>
-                </div>
-
-                {/* Message Bubble */}
+                {/* WhatsApp Chat Header */}
                 <div
                   style={{
-                    background: '#16202e',
-                    borderRadius: '8px 8px 8px 2px',
-                    padding: '10px 12px',
-                    fontSize: 13,
-                    lineHeight: 1.5,
+                    background: '#202c33',
+                    padding: '10px 14px',
+                    borderBottom: '1px solid #2a3942',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
                   }}
                 >
-                  Hey Aravind, I am in a confidential acquisition meeting. Please wire <strong>₹42,00,000</strong> to our vendor account <strong>501004419000</strong> (IFSC: <strong>HDFC0001234</strong>) before 2 PM today. Reference is <strong>TX-4F1593</strong>.
-                  
-                  {/* INLINE SEAL CONTENT SCRIPT BADGE */}
                   <div
                     style={{
-                      marginTop: 10,
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: '1px solid rgba(240, 180, 41, 0.45)',
-                      background: 'rgba(240, 180, 41, 0.1)',
-                      color: '#f0b429',
-                      fontSize: 12,
+                      position: 'relative',
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#00a884',
+                      color: '#111b21',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontWeight: 800,
+                      fontSize: 13,
                     }}
                   >
-                    <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-                      <span
+                    RM
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        right: 0,
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: '#00a884',
+                        border: '2px solid #202c33',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#e9edef' }}>Rahul Menon (CEO)</div>
+                    <div style={{ fontSize: 11, color: '#8696a0' }}>+91 98400 11234 · Online</div>
+                  </div>
+                  <div className="spacer" />
+                  <div style={{ display: 'flex', gap: 14, color: '#aebac1', fontSize: 14 }}>
+                    <span title="Search">🔍</span>
+                    <span title="Phone Call">📞</span>
+                    <span title="Video Call">📹</span>
+                    <span title="Menu">⋮</span>
+                  </div>
+                </div>
+
+                {/* WhatsApp Chat Messages Stream */}
+                <div
+                  style={{
+                    padding: 14,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    background: '#0b141a',
+                  }}
+                >
+                  {/* Date Chip */}
+                  <div style={{ alignSelf: 'center', background: '#182229', color: '#8696a0', fontSize: 11, padding: '3px 10px', borderRadius: 6, fontWeight: 600 }}>
+                    TODAY
+                  </div>
+
+                  {/* Message 1: Urgent Text Message Bubble */}
+                  <div
+                    style={{
+                      background: '#202c33',
+                      borderRadius: '0 8px 8px 8px',
+                      padding: '10px 12px',
+                      maxWidth: '92%',
+                      alignSelf: 'flex-start',
+                      color: '#e9edef',
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    Hey Aravind, I am in an urgent acquisition board meeting. Please initiate a wire transfer of <strong>₹42,00,000</strong> for the Alton Logistics vendor invoice before 2 PM today. Reference is <strong>TX-4F1593</strong>.
+                    <div style={{ textAlign: 'right', fontSize: 10, color: '#8696a0', marginTop: 4 }}>
+                      11:41 AM <span style={{ color: '#53bdeb' }}>✓✓</span>
+                    </div>
+
+                    {/* INLINE SEAL CONTENT SCRIPT CHIP */}
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        border: '1px solid rgba(240, 180, 41, 0.45)',
+                        background: 'rgba(240, 180, 41, 0.1)',
+                        color: '#f0b429',
+                        fontSize: 12,
+                      }}
+                    >
+                      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontSize: 10,
+                            letterSpacing: '0.14em',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: '#f0b429',
+                            color: '#1b1400',
+                          }}
+                        >
+                          SEAL
+                        </span>
+                        <span style={{ fontWeight: 600 }}>Urgent payment demand detected in zero-authority channel.</span>
+                      </div>
+
+                      <div className="row" style={{ marginTop: 8, gap: 6 }}>
+                        <button
+                          className="btn sm"
+                          style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => executeLookup('TX-4F1593', setChatBadgeResult)}
+                        >
+                          Check TX-4F1593 (Genuine)
+                        </button>
+                        <button
+                          className="btn sm"
+                          style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => executeLookup('TX-MULE-404', setChatBadgeResult)}
+                        >
+                          Check TX-MULE-404 (Fake)
+                        </button>
+                        <button
+                          className="btn sm bad"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => {
+                            setExtPopupTab('verify');
+                            raiseCallerChallenge();
+                          }}
+                        >
+                          Verify Sender
+                        </button>
+                      </div>
+
+                      {chatBadgeResult ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: '8px 10px',
+                            borderRadius: 6,
+                            background: chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                            border: `1px solid ${chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
+                            color: chatBadgeResult.authorized ? '#38d39f' : '#ff8f8f',
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{chatBadgeResult.headline}</div>
+                          <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2 }}>{chatBadgeResult.detail}</div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Message 2: WhatsApp Voice Note (Audio) */}
+                  <div
+                    style={{
+                      background: '#202c33',
+                      borderRadius: '0 8px 8px 8px',
+                      padding: '10px 12px',
+                      maxWidth: '92%',
+                      alignSelf: 'flex-start',
+                      color: '#e9edef',
+                    }}
+                  >
+                    {/* Voice Note Player Bar */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        background: '#111b21',
+                        padding: '8px 12px',
+                        borderRadius: 8,
+                      }}
+                    >
+                      <button
+                        onClick={playVoiceNote}
                         style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: '50%',
+                          background: '#00a884',
+                          color: '#111b21',
+                          display: 'grid',
+                          placeItems: 'center',
+                          cursor: 'pointer',
+                          border: 'none',
+                          fontSize: 14,
                           fontWeight: 800,
-                          fontSize: 10,
-                          letterSpacing: '0.14em',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: '#f0b429',
-                          color: '#1b1400',
                         }}
                       >
-                        SEAL
-                      </span>
-                      <span style={{ fontWeight: 600 }}>Payment instructions plus urgency — exact shape of this attack.</span>
+                        {audioPlaying ? '⏸' : '▶'}
+                      </button>
+
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 20 }}>
+                          {[12, 18, 10, 24, 16, 28, 14, 20, 26, 12, 18, 22, 14, 26, 10, 16, 20].map((h, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                width: 3,
+                                height: h,
+                                background: audioPlaying ? '#00a884' : '#8696a0',
+                                borderRadius: 2,
+                                opacity: i < 7 && audioPlaying ? 1 : 0.6,
+                                transition: 'height 0.2s ease',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8696a0', marginTop: 2 }}>
+                          <span>{audioPlaying ? '0:07 / 0:14' : '0:14'}</span>
+                          <span>Voice Note · 11:42 AM <span style={{ color: '#53bdeb' }}>✓✓</span></span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="row" style={{ marginTop: 8, gap: 6 }}>
-                      <button
-                        className="btn sm"
-                        style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => executeLookup('TX-4F1593', setChatBadgeResult)}
-                      >
-                        Check TX-4F1593 (Genuine)
-                      </button>
-                      <button
-                        className="btn sm"
-                        style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => executeLookup('TX-MULE-404', setChatBadgeResult)}
-                      >
-                        Check TX-MULE-404 (Fake)
-                      </button>
-                      <button
-                        className="btn sm bad"
-                        style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => {
-                          setExtPopupTab('verify');
-                          raiseCallerChallenge();
-                        }}
-                      >
-                        Verify Sender
-                      </button>
-                    </div>
+                    {/* SEAL In-Situ Media Scanner Toolbar for Audio */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 8,
+                        background: 'rgba(20, 31, 46, 0.9)',
+                        border: '1px solid rgba(106, 168, 255, 0.35)',
+                      }}
+                    >
+                      <div className="row" style={{ alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontSize: 9,
+                            letterSpacing: '0.12em',
+                            padding: '2px 5px',
+                            borderRadius: 4,
+                            background: '#2f4d75',
+                            color: '#8ab4f8',
+                          }}
+                        >
+                          SEAL IN-SITU SCANNER · AUDIO
+                        </span>
+                        <div className="spacer" />
+                        <span className="mono dim" style={{ fontSize: 10 }}>SHA-256: {audioSha.slice(0, 10)}…</span>
+                      </div>
 
-                    {chatBadgeResult ? (
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn sm primary"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          disabled={audioBusy}
+                          onClick={() => {
+                            setAudioBusy(true);
+                            verifyMedia(audioSha, setAudioLookup).finally(() => setAudioBusy(false));
+                          }}
+                        >
+                          🔍 Verify Signature
+                        </button>
+                        <button
+                          className="btn sm"
+                          style={{ fontSize: 11, padding: '3px 8px', background: 'var(--panel-2)', color: 'var(--fg)' }}
+                          onClick={() => signMediaAsCEO(audioSha, 'AUDIO', 'CEO voice authorization note', setAudioLookup)}
+                        >
+                          ✍️ Sign as CEO Key
+                        </button>
+                        <button
+                          className="btn sm bad"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          onClick={() => {
+                            setExtPopupTab('verify');
+                            raiseCallerChallenge();
+                          }}
+                        >
+                          📞 Challenge Caller
+                        </button>
+                      </div>
+
+                      {/* Verification Status */}
+                      {audioLookup ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: 8,
+                            borderRadius: 6,
+                            background: audioLookup.signed ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                            border: `1px solid ${audioLookup.signed ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 12, color: audioLookup.signed ? 'var(--ok)' : 'var(--bad)' }}>
+                            {audioLookup.signed ? '✓ Cryptographically Verified Voice Provenance' : '⚠️ Unsigned Voice Note — Voice Clone Suspected'}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 2 }}>
+                            {audioLookup.signed && audioLookup.attestations[0]
+                              ? `Signed by ${audioLookup.attestations[0].signer_name} (${audioLookup.attestations[0].signer_role}) on ${audioLookup.attestations[0].device_kind} key.`
+                              : 'No executive signature registered for this audio hash. Anyone can clone voice audio; never act without a signed escrow.'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: '#8696a0', marginTop: 6 }}>
+                          💡 Click <strong>Verify Signature</strong> to compute the audio waveform hash and check cryptographic provenance on the ledger.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Message 3: WhatsApp Invoice Attachment (Image/PDF) */}
+                  <div
+                    style={{
+                      background: '#202c33',
+                      borderRadius: '0 8px 8px 8px',
+                      padding: '10px 12px',
+                      maxWidth: '92%',
+                      alignSelf: 'flex-start',
+                      color: '#e9edef',
+                    }}
+                  >
+                    {/* Invoice Attachment Preview Box */}
+                    <div
+                      style={{
+                        background: '#111b21',
+                        padding: 10,
+                        borderRadius: 8,
+                        border: '1px solid #2a3942',
+                        display: 'flex',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
                       <div
                         style={{
-                          marginTop: 8,
-                          padding: '8px 10px',
+                          width: 42,
+                          height: 48,
                           borderRadius: 6,
-                          background: chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
-                          border: `1px solid ${chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
-                          color: chatBadgeResult.authorized ? '#38d39f' : '#ff8f8f',
+                          background: 'linear-gradient(135deg, #ef4444, #991b1b)',
+                          color: '#fff',
+                          display: 'grid',
+                          placeItems: 'center',
+                          fontWeight: 800,
+                          fontSize: 11,
+                          letterSpacing: '0.05em',
                         }}
                       >
-                        <div style={{ fontWeight: 700 }}>{chatBadgeResult.headline}</div>
-                        <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2 }}>{chatBadgeResult.detail}</div>
+                        PDF
                       </div>
-                    ) : null}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 12, color: '#e9edef' }}>TAX_INVOICE_ALTON_9842.pdf</div>
+                        <div style={{ fontSize: 11, color: '#8696a0', marginTop: 2 }}>
+                          Payee: <strong>Alton Logistics Pvt Ltd</strong> · <strong>₹42,00,000.00</strong>
+                        </div>
+                        <div className="mono" style={{ fontSize: 10, color: '#8696a0', marginTop: 2 }}>
+                          Acct: 50100234564419 · IFSC: HDFC0001234
+                        </div>
+                      </div>
+                      <div style={{ alignSelf: 'flex-end', fontSize: 10, color: '#8696a0' }}>
+                        11:43 AM <span style={{ color: '#53bdeb' }}>✓✓</span>
+                      </div>
+                    </div>
+
+                    {/* SEAL In-Situ Media Scanner Toolbar for Invoice */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 8,
+                        background: 'rgba(20, 31, 46, 0.9)',
+                        border: '1px solid rgba(106, 168, 255, 0.35)',
+                      }}
+                    >
+                      <div className="row" style={{ alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontSize: 9,
+                            letterSpacing: '0.12em',
+                            padding: '2px 5px',
+                            borderRadius: 4,
+                            background: '#2f4d75',
+                            color: '#8ab4f8',
+                          }}
+                        >
+                          SEAL IN-SITU SCANNER · INVOICE
+                        </span>
+                        <div className="spacer" />
+                        <span className="mono dim" style={{ fontSize: 10 }}>SHA-256: {invoiceSha.slice(0, 10)}…</span>
+                      </div>
+
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn sm primary"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          disabled={invoiceBusy}
+                          onClick={() => {
+                            setInvoiceBusy(true);
+                            verifyMedia(invoiceSha, setInvoiceLookup).finally(() => setInvoiceBusy(false));
+                          }}
+                        >
+                          🔍 Verify Signature
+                        </button>
+                        <button
+                          className="btn sm"
+                          style={{ fontSize: 11, padding: '3px 8px', background: 'var(--panel-2)', color: 'var(--fg)' }}
+                          onClick={() => signMediaAsCEO(invoiceSha, 'IMAGE', 'Invoice AL-9842 authenticated by CEO', setInvoiceLookup)}
+                        >
+                          ✍️ Sign as CEO Key
+                        </button>
+                        <button
+                          className="btn sm good"
+                          style={{ fontSize: 11, padding: '3px 8px' }}
+                          disabled={invoiceBusy}
+                          onClick={createEscrowFromInvoice}
+                        >
+                          ⚡ Open Escrow Bound to Invoice
+                        </button>
+                      </div>
+
+                      {/* Invoice Verification Outcome */}
+                      {invoiceLookup ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: 8,
+                            borderRadius: 6,
+                            background: invoiceLookup.signed ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                            border: `1px solid ${invoiceLookup.signed ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 12, color: invoiceLookup.signed ? 'var(--ok)' : 'var(--bad)' }}>
+                            {invoiceLookup.signed ? '✓ Verified Invoice Authenticity' : '⚠️ Unsigned Invoice Image'}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--dim)', marginTop: 2 }}>
+                            {invoiceLookup.signed && invoiceLookup.attestations[0]
+                              ? `Attested by ${invoiceLookup.attestations[0].signer_name} (${invoiceLookup.attestations[0].signer_role}).`
+                              : 'No executive signature attached to this invoice digest.'}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Linked Escrow Badge */}
+                      {linkedEscrow ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: '8px 10px',
+                            borderRadius: 6,
+                            background: 'rgba(240, 180, 41, 0.15)',
+                            border: '1px solid rgba(240, 180, 41, 0.5)',
+                            fontSize: 11,
+                          }}
+                        >
+                          <div className="row" style={{ alignItems: 'center' }}>
+                            <span style={{ fontWeight: 700, color: '#f0b429' }}>⚡ Time-Boxed Escrow #{linkedEscrow.txn_id} Active</span>
+                            <div className="spacer" />
+                            <span className="mono" style={{ color: '#fff' }}>{linkedEscrow.state}</span>
+                          </div>
+                          <div style={{ color: 'var(--dim)', marginTop: 2 }}>
+                            Bound to invoice hash · Requires {linkedEscrow.required_approvals} approvers in Extension Inbox →
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-                💡 <strong>The Key Insight:</strong> The extension does not attempt to detect AI audio or text. Instead, it notices money is being discussed in a channel with zero signing authority, and gives the employee immediate 1-click ledger verification.
+                💡 <strong>The Key Insight:</strong> The extension does not attempt to detect AI audio or text. Instead, it computes cryptographic SHA-256 hashes of media attachments locally in the tab, verifies executive signatures, and opens time-boxed escrows directly linked to the source media.
               </div>
             </Panel>
 
@@ -594,7 +1182,7 @@ export function VishingLab({
               <div
                 style={{
                   width: '100%',
-                  maxWidth: 380,
+                  maxWidth: 390,
                   margin: '0 auto',
                   background: 'var(--panel)',
                   borderRadius: 12,
@@ -603,36 +1191,268 @@ export function VishingLab({
                   boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
                 }}
               >
-                {/* Popup Header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--panel-2)', borderBottom: '1px solid var(--line)' }}>
+                {/* Extension Header */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 14px',
+                    background: 'var(--panel-2)',
+                    borderBottom: '1px solid var(--line)',
+                  }}
+                >
                   <span style={{ fontWeight: 800, letterSpacing: '0.14em', fontSize: 12, color: 'var(--accent)' }}>SEAL</span>
                   <span style={{ fontSize: 11, color: 'var(--dim)' }}>authorization check</span>
-                  <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>{session.name}</div>
+                  <div className="spacer" />
+                  <select
+                    value={extActivePersona}
+                    onChange={(e) => setExtActivePersona(e.target.value as 'u_priya')}
+                    style={{ fontSize: 11, padding: '2px 6px', background: 'var(--bg)', border: '1px solid var(--line-soft)', borderRadius: 4 }}
+                  >
+                    <option value="u_priya">Priya Nair (CFO)</option>
+                    <option value="u_anita">Anita Desai (CTO)</option>
+                    <option value="u_rahul">Rahul Menon (CEO)</option>
+                  </select>
                 </div>
 
                 {/* Popup Tabs */}
-                <div style={{ display: 'flex', gap: 4, padding: '10px 14px 0', borderBottom: '1px solid var(--line-soft)' }}>
-                  <button
-                    className={`btn sm ${extPopupTab === 'verify' ? 'primary' : 'ghost'}`}
-                    style={{ flex: 1, borderRadius: '6px 6px 0 0' }}
-                    onClick={() => setExtPopupTab('verify')}
-                  >
-                    Verify a caller
-                  </button>
-                  <button
-                    className={`btn sm ${extPopupTab === 'lookup' ? 'primary' : 'ghost'}`}
-                    style={{ flex: 1, borderRadius: '6px 6px 0 0' }}
-                    onClick={() => setExtPopupTab('lookup')}
-                  >
-                    Check a payment
-                  </button>
-                </div>
+                {(() => {
+                  const pendingCount =
+                    (activeChallenge && activeChallenge.state === 'PENDING' ? 1 : 0) +
+                    inboxEscrows.filter((e) => e.state === 'PENDING_QUORUM').length;
+                  return (
+                    <div style={{ display: 'flex', gap: 4, padding: '10px 14px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                      <button
+                        className={`btn sm ${extPopupTab === 'inbox' ? 'primary' : 'ghost'}`}
+                        style={{ flex: 1, borderRadius: '6px 6px 0 0', position: 'relative' }}
+                        onClick={() => setExtPopupTab('inbox')}
+                      >
+                        Inbox
+                        {pendingCount > 0 ? (
+                          <span
+                            style={{
+                              marginLeft: 5,
+                              padding: '1px 6px',
+                              borderRadius: 10,
+                              background: 'var(--bad)',
+                              color: '#fff',
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {pendingCount}
+                          </span>
+                        ) : null}
+                      </button>
+                      <button
+                        className={`btn sm ${extPopupTab === 'verify' ? 'primary' : 'ghost'}`}
+                        style={{ flex: 1, borderRadius: '6px 6px 0 0' }}
+                        onClick={() => setExtPopupTab('verify')}
+                      >
+                        Verify Caller
+                      </button>
+                      <button
+                        className={`btn sm ${extPopupTab === 'lookup' ? 'primary' : 'ghost'}`}
+                        style={{ flex: 1, borderRadius: '6px 6px 0 0' }}
+                        onClick={() => setExtPopupTab('lookup')}
+                      >
+                        Check Payment
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ padding: 14 }}>
+                  {/* TAB 1: INBOX & ESCROWS */}
+                  {extPopupTab === 'inbox' ? (
+                    <div>
+                      {/* Active Challenge Card in Inbox */}
+                      {activeChallenge && activeChallenge.state === 'PENDING' ? (
+                        <div
+                          style={{
+                            marginBottom: 14,
+                            padding: 10,
+                            borderRadius: 8,
+                            background: 'rgba(255, 107, 107, 0.1)',
+                            border: '1px solid rgba(255, 107, 107, 0.4)',
+                          }}
+                        >
+                          <div className="row" style={{ alignItems: 'center', marginBottom: 4 }}>
+                            <span className="badge bad" style={{ fontSize: 9 }}>verify a caller</span>
+                            <div className="spacer" />
+                            <span className="mono dim" style={{ fontSize: 10 }}>{activeChallenge.seconds_remaining}s left</span>
+                          </div>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--fg)', marginTop: 4 }}>
+                            Are you on a {activeChallenge.channel.toLowerCase()} with Aravind Kumar right now?
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 8px' }}>
+                            Demand: &ldquo;{activeChallenge.demand}&rdquo;
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 18,
+                              fontWeight: 800,
+                              fontFamily: 'var(--mono)',
+                              letterSpacing: '0.1em',
+                              textAlign: 'center',
+                              margin: '6px 0',
+                              color: '#fff',
+                            }}
+                          >
+                            {activeChallenge.code}
+                          </div>
+                          <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                            <button className="btn sm bad" style={{ flex: 1, fontSize: 11 }} onClick={executiveDenyChallenge}>
+                              No — Not Me (Deny)
+                            </button>
+                            <button className="btn sm good" style={{ flex: 1, fontSize: 11 }} onClick={executiveConfirmChallenge}>
+                              Confirm on Key
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Escrows Awaiting Quorum */}
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dim)', marginBottom: 8 }}>
+                        Escrows Awaiting Quorum Approval
+                      </div>
+
+                      {inboxEscrows.filter((e) => e.state === 'PENDING_QUORUM').length === 0 ? (
+                        <div
+                          style={{
+                            textAlign: 'center',
+                            padding: '24px 12px',
+                            background: 'var(--panel-2)',
+                            borderRadius: 8,
+                            border: '1px dashed var(--line)',
+                            color: 'var(--dim)',
+                            fontSize: 12,
+                          }}
+                        >
+                          <div style={{ fontSize: 24, marginBottom: 6, color: 'var(--ok)' }}>✓</div>
+                          <strong>Inbox is empty.</strong>
+                          <div style={{ marginTop: 4, fontSize: 11 }}>
+                            Nothing waiting for your signature. To test, open an escrow from the WhatsApp invoice on the left!
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="stack" style={{ gap: 10 }}>
+                          {inboxEscrows
+                            .filter((e) => e.state === 'PENDING_QUORUM')
+                            .map((e) => {
+                              const isApproving = approvingId === e.escrow_id;
+                              const mediaSha = e.intent.media_sha256 || invoiceSha;
+                              return (
+                                <div
+                                  key={e.escrow_id}
+                                  style={{
+                                    background: 'var(--panel-2)',
+                                    borderRadius: 8,
+                                    border: '1px solid var(--line)',
+                                    padding: 10,
+                                  }}
+                                >
+                                  <div className="row" style={{ alignItems: 'center' }}>
+                                    <span className="mono" style={{ fontWeight: 700, fontSize: 12 }}>{e.txn_id}</span>
+                                    <span
+                                      className={`badge ${e.risk.tier === 'CRITICAL' ? 'bad' : 'warn'}`}
+                                      style={{ fontSize: 9, marginLeft: 6 }}
+                                    >
+                                      {e.risk.tier}
+                                    </span>
+                                    <div className="spacer" />
+                                    <span className="mono" style={{ fontWeight: 800, color: 'var(--accent)' }}>
+                                      {formatINR(e.intent.amount.value)}
+                                    </span>
+                                  </div>
+
+                                  <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4 }}>
+                                    {e.intent.payee.name}
+                                  </div>
+                                  <div className="dim mono" style={{ fontSize: 11 }}>
+                                    {e.intent.payee.account} · IFSC {e.intent.payee.ifsc}
+                                  </div>
+
+                                  {mediaSha ? (
+                                    <div style={{ marginTop: 4 }}>
+                                      <span
+                                        className="badge"
+                                        style={{
+                                          background: '#162438',
+                                          border: '1px solid #2f4d75',
+                                          color: '#8ab4f8',
+                                          fontSize: 9,
+                                        }}
+                                      >
+                                        WhatsApp Media #{mediaSha.slice(0, 10)}… Verified ✓
+                                      </span>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+                                    {e.approvals.length} of {e.required_approvals} approvals · {Math.round(e.seconds_remaining / 60)}m remaining
+                                  </div>
+
+                                  <div className="row" style={{ marginTop: 10, gap: 6 }}>
+                                    <button
+                                      className="btn sm good"
+                                      style={{ flex: 1, fontSize: 11 }}
+                                      disabled={isApproving}
+                                      onClick={() => approveEscrowDirect(e.escrow_id, extActivePersona)}
+                                    >
+                                      {isApproving
+                                        ? 'Authorizing with Key…'
+                                        : `Approve on my key (${extActivePersona === 'u_priya' ? 'Priya Nair - CFO' : extActivePersona === 'u_anita' ? 'Anita Desai - CTO' : 'Rahul Menon - CEO'})`}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+
+                      {/* Recently Settled on RTGS Rail */}
+                      {inboxEscrows.some((e) => e.state === 'EXECUTED') ? (
+                        <div style={{ marginTop: 14, borderTop: '1px solid var(--line-soft)', paddingTop: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ok)', marginBottom: 6 }}>
+                            Settled on RTGS Bank Rail
+                          </div>
+                          {inboxEscrows
+                            .filter((e) => e.state === 'EXECUTED')
+                            .slice(0, 2)
+                            .map((e) => (
+                              <div
+                                key={e.escrow_id}
+                                style={{
+                                  background: 'rgba(56, 211, 159, 0.1)',
+                                  border: '1px solid rgba(56, 211, 159, 0.4)',
+                                  borderRadius: 6,
+                                  padding: 8,
+                                  marginBottom: 6,
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div className="row">
+                                  <strong style={{ color: 'var(--ok)' }}>✓ {e.txn_id} Settled</strong>
+                                  <div className="spacer" />
+                                  <span className="mono">{formatINR(e.intent.amount.value)}</span>
+                                </div>
+                                <div className="dim mono" style={{ marginTop: 2 }}>
+                                  Rail Ref: {e.receipt?.reference ?? 'RTGS-SETTLED'}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* TAB 2: VERIFY CALLER */}
                   {extPopupTab === 'verify' ? (
                     <div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-                        Ask the caller something only the real executive can answer on their phone:
+                        Ask the caller something only the real executive can answer on their enrolled device:
                       </div>
 
                       <label style={{ display: 'block', marginBottom: 8, fontSize: 11, textTransform: 'uppercase', color: 'var(--dim)' }}>
@@ -726,7 +1546,6 @@ export function VishingLab({
                                 This code is on {activeChallenge.claimed_name}&rsquo;s enrolled device and your screen. <strong>If they cannot read it back, it is a deepfake clone.</strong>
                               </p>
 
-                              {/* Executive Phone Response Simulator */}
                               <div style={{ marginTop: 10, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
                                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--dim)', marginBottom: 4 }}>
                                   Simulated Executive Phone Prompt:
@@ -767,7 +1586,10 @@ export function VishingLab({
                         </div>
                       ) : null}
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {/* TAB 3: CHECK PAYMENT */}
+                  {extPopupTab === 'lookup' ? (
                     <div>
                       <label style={{ display: 'block', marginBottom: 12, fontSize: 11, textTransform: 'uppercase', color: 'var(--dim)' }}>
                         Transaction Reference
@@ -813,7 +1635,7 @@ export function VishingLab({
                         </div>
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </Panel>
