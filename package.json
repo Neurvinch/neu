@@ -9,7 +9,8 @@
     "packages/server",
     "packages/bank",
     "packages/web",
-    "packages/authenticator"
+    "packages/authenticator",
+    "packages/extension"
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -20,9 +21,12 @@
     "sim": "tsx scripts/simulate.ts",
     "reset": "node scripts/reset.mjs",
     "check": "tsx scripts/check-credential.ts",
-    "auth": "npm run dev -w @seal/authenticator"
+    "auth": "npm run dev -w @seal/authenticator",
+    "test:ext": "tsx scripts/test-extension.ts",
+    "build:ext": "npm run build -w @seal/extension"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.0"
   }
 }
