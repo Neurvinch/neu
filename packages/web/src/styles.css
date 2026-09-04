@@ -1,38 +1,44 @@
 /* ---------------------------------------------------------------------------
-   SEAL console
+   SEAL console - White & Purple Theme
    The single most important rule in this stylesheet: a verified-origin record
    and an unverified-origin record must never look alike. Lane A is green and
    sealed; anything unverified is amber and says so in words, not just colour.
    --------------------------------------------------------------------------- */
 
 :root {
-  --bg: #0b0e13;
-  --panel: #121722;
-  --panel-2: #171d2a;
-  --line: #232c3d;
-  --line-soft: #1b2231;
-  --text: #e6ecf7;
-  --muted: #8a98b4;
-  --dim: #5d6a83;
+  --bg: #f8f6fc;
+  --panel: #ffffff;
+  --panel-2: #f4f0fb;
+  --panel-3: #ece5f8;
+  --line: #e2daf0;
+  --line-soft: #eee8f8;
+  --text: #1d1335;
+  --muted: #5e527d;
+  --dim: #8b7fa8;
 
-  --ok: #38d39f;
-  --ok-bg: rgba(56, 211, 159, 0.08);
-  --ok-line: rgba(56, 211, 159, 0.35);
+  --ok: #059669;
+  --ok-bg: rgba(5, 150, 105, 0.08);
+  --ok-line: rgba(5, 150, 105, 0.28);
 
-  --warn: #f0b429;
-  --warn-bg: rgba(240, 180, 41, 0.08);
-  --warn-line: rgba(240, 180, 41, 0.35);
+  --warn: #d97706;
+  --warn-bg: rgba(217, 119, 6, 0.08);
+  --warn-line: rgba(217, 119, 6, 0.28);
 
-  --bad: #ff6b6b;
-  --bad-bg: rgba(255, 107, 107, 0.08);
-  --bad-line: rgba(255, 107, 107, 0.35);
+  --bad: #e11d48;
+  --bad-bg: rgba(225, 29, 72, 0.08);
+  --bad-line: rgba(225, 29, 72, 0.28);
 
-  --accent: #6aa8ff;
-  --accent-bg: rgba(106, 168, 255, 0.1);
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-bg: rgba(124, 58, 237, 0.08);
+  --accent-line: rgba(124, 58, 237, 0.28);
 
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --radius: 10px;
+  --shadow-sm: 0 1px 3px rgba(124, 58, 237, 0.05);
+  --shadow-md: 0 4px 16px rgba(124, 58, 237, 0.08);
+  --shadow-lg: 0 12px 32px rgba(29, 19, 53, 0.12);
 }
 
 * {
@@ -75,22 +81,24 @@ a {
   gap: 20px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: #ffffff;
   position: sticky;
   top: 0;
   z-index: 20;
+  box-shadow: var(--shadow-sm);
 }
 
 .brand {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.14em;
+  color: var(--accent);
 }
 
 .brand small {
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--dim);
   font-size: 11px;
@@ -98,7 +106,7 @@ a {
 
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -110,6 +118,8 @@ a {
   padding: 6px 12px;
   color: var(--muted);
   cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
 }
 
 .tab:hover {
@@ -118,9 +128,11 @@ a {
 }
 
 .tab.active {
-  color: var(--text);
-  background: var(--panel-2);
-  border-color: var(--line);
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
 }
 
 .tab .dot {
@@ -129,11 +141,16 @@ a {
   margin-left: 6px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--accent);
-  color: #06101f;
+  background: var(--panel-3);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 700;
   text-align: center;
+}
+
+.tab.active .dot {
+  background: #ffffff;
+  color: var(--accent);
 }
 
 .whoami {
@@ -157,12 +174,14 @@ a {
 h1 {
   font-size: 20px;
   margin: 0 0 4px;
+  color: var(--text);
 }
 
 h2 {
   font-size: 15px;
   margin: 0 0 12px;
   letter-spacing: 0.02em;
+  color: var(--text);
 }
 
 .lede {
@@ -192,6 +211,7 @@ h2 {
   border-radius: var(--radius);
   padding: 18px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .panel-head {
@@ -243,30 +263,30 @@ h2 {
 
 .banner .big {
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
 .banner.ok {
   background: var(--ok-bg);
   border-color: var(--ok-line);
-  color: var(--ok);
+  color: #047857;
 }
 
 .banner.warn {
   background: var(--warn-bg);
   border-color: var(--warn-line);
-  color: var(--warn);
+  color: #b45309;
 }
 
 .banner.bad {
   background: var(--bad-bg);
   border-color: var(--bad-line);
-  color: var(--bad);
+  color: #be123c;
 }
 
 .banner.info {
   background: var(--accent-bg);
-  border-color: rgba(106, 168, 255, 0.3);
+  border-color: var(--accent-line);
   color: var(--accent);
 }
 
@@ -281,34 +301,36 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--panel-2);
+  color: var(--text);
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .badge.ok {
-  color: var(--ok);
+  color: #047857;
   border-color: var(--ok-line);
   background: var(--ok-bg);
 }
 .badge.warn {
-  color: var(--warn);
+  color: #b45309;
   border-color: var(--warn-line);
   background: var(--warn-bg);
 }
 .badge.bad {
-  color: var(--bad);
+  color: #be123c;
   border-color: var(--bad-line);
   background: var(--bad-bg);
 }
 .badge.accent {
   color: var(--accent);
-  border-color: rgba(106, 168, 255, 0.3);
+  border-color: var(--accent-line);
   background: var(--accent-bg);
 }
 
@@ -325,6 +347,7 @@ label.field .lbl {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--dim);
+  font-weight: 600;
   margin-bottom: 5px;
 }
 
@@ -332,22 +355,25 @@ input,
 select,
 textarea {
   width: 100%;
-  background: var(--bg);
+  background: #ffffff;
+  color: var(--text);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 9px 11px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
 }
 
 input[readonly],
 input:disabled {
-  background: #0e1219;
+  background: var(--panel-2);
   color: var(--muted);
   cursor: not-allowed;
 }
@@ -360,11 +386,12 @@ input:disabled {
 
 .locked .val {
   font-family: var(--mono);
-  background: #0e1219;
+  background: var(--panel-2);
   border: 1px dashed var(--line);
   border-radius: 8px;
   padding: 9px 34px 9px 11px;
   word-break: break-all;
+  color: var(--text);
 }
 
 .locked .lock {
@@ -379,15 +406,18 @@ input:disabled {
 
 .btn {
   border: 1px solid var(--line);
-  background: var(--panel-2);
+  background: #ffffff;
+  color: var(--text);
   border-radius: 8px;
   padding: 9px 16px;
   cursor: pointer;
-  transition: 0.12s;
+  font-weight: 500;
+  transition: all 0.15s ease;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--dim);
+  border-color: var(--accent);
+  background: var(--panel-2);
 }
 
 .btn:disabled {
@@ -398,25 +428,50 @@ input:disabled {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #06101f;
+  color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .btn.good {
   background: var(--ok);
   border-color: var(--ok);
-  color: #04150f;
+  color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+}
+
+.btn.good:hover:not(:disabled) {
+  background: #047857;
+  border-color: #047857;
 }
 
 .btn.danger {
-  color: var(--bad);
+  color: #be123c;
   border-color: var(--bad-line);
   background: var(--bad-bg);
+  font-weight: 600;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: rgba(225, 29, 72, 0.15);
+  border-color: var(--bad);
 }
 
 .btn.ghost {
   background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
 }
 
 .btn.sm {
@@ -438,15 +493,17 @@ th {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--dim);
-  font-weight: 500;
-  padding: 8px 10px;
+  font-weight: 600;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--line);
+  background: var(--panel);
 }
 
 td {
-  padding: 9px 10px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
+  color: var(--text);
 }
 
 tr:last-child td {
@@ -466,8 +523,9 @@ tr.clickable:hover td {
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel-2);
+  background: var(--panel);
   padding: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .card.laneA {
@@ -505,6 +563,7 @@ tr.clickable:hover td {
   font-size: 26px;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 .countdown.urgent {
@@ -516,8 +575,8 @@ tr.clickable:hover td {
 }
 
 .meter {
-  height: 4px;
-  border-radius: 2px;
+  height: 5px;
+  border-radius: 3px;
   background: var(--line);
   overflow: hidden;
   margin-top: 6px;
@@ -562,6 +621,7 @@ tr.clickable:hover td {
 .chain-entry .type {
   font-weight: 600;
   letter-spacing: 0.03em;
+  color: var(--text);
 }
 
 .hashline {
@@ -574,11 +634,18 @@ tr.clickable:hover td {
 .hashchip {
   font-family: var(--mono);
   font-size: 11px;
-  background: var(--bg);
+  background: var(--panel-2);
   border: 1px solid var(--line);
+  color: var(--accent);
   border-radius: 6px;
   padding: 2px 7px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hashchip:hover {
+  background: #ffffff;
+  border-color: var(--accent);
 }
 
 /* --- modal ---------------------------------------------------------------- */
@@ -586,7 +653,8 @@ tr.clickable:hover td {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 7, 12, 0.75);
+  background: rgba(29, 19, 53, 0.45);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -594,17 +662,19 @@ tr.clickable:hover td {
 }
 
 .modal {
-  background: var(--panel);
+  background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 14px;
   width: min(560px, 100%);
   max-height: 90vh;
   overflow: auto;
-  padding: 20px;
+  padding: 22px;
+  box-shadow: var(--shadow-lg);
 }
 
 .modal h2 {
   margin-bottom: 6px;
+  color: var(--text);
 }
 
 /* --- metrics -------------------------------------------------------------- */
@@ -618,14 +688,17 @@ tr.clickable:hover td {
 .tile {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel-2);
+  background: #ffffff;
   padding: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .tile .n {
   font-size: 24px;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .tile .t {
@@ -633,6 +706,7 @@ tr.clickable:hover td {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--dim);
+  font-weight: 600;
   margin-top: 4px;
 }
 
@@ -643,10 +717,16 @@ tr.clickable:hover td {
   display: grid;
   place-items: center;
   padding: 24px;
+  background: var(--bg);
 }
 
 .login .box {
   width: min(560px, 100%);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--shadow-md);
 }
 
 .people {
@@ -658,19 +738,22 @@ tr.clickable:hover td {
 .person {
   text-align: left;
   border: 1px solid var(--line);
-  background: var(--panel-2);
+  background: #ffffff;
   border-radius: 8px;
   padding: 10px 12px;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .person:hover {
   border-color: var(--accent);
+  background: var(--panel-2);
 }
 
 .person.on {
   border-color: var(--accent);
   background: var(--accent-bg);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
 }
 
 .person .r {
@@ -691,6 +774,7 @@ tr.clickable:hover td {
   color: var(--dim);
   border: 1px dashed var(--line);
   border-radius: var(--radius);
+  background: #ffffff;
 }
 
 /* --- caller verification --------------------------------------------------
@@ -700,9 +784,9 @@ tr.clickable:hover td {
 .code-box {
   text-align: center;
   padding: 22px 16px;
-  border: 1px dashed var(--line);
+  border: 1px dashed var(--accent-line);
   border-radius: 12px;
-  background: var(--bg);
+  background: #faf8fe;
   margin: 14px 0;
 }
 
@@ -710,12 +794,6 @@ tr.clickable:hover td {
   font-family: var(--mono);
   font-size: 38px;
   letter-spacing: 0.18em;
-  font-weight: 700;
-  color: var(--ok);
-}
-
-.people {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
+  font-weight: 800;
+  color: var(--accent);
 }
