@@ -175,6 +175,21 @@ export interface TransactionIntent {
   purpose: string;
   deadline: string;
   originator: { user_id: string; role: Role };
+  /**
+   * The file this payment was raised from, when it came out of a chat: an
+   * invoice image, a voice note asking for a settlement.
+   *
+   * Inside the signed object on purpose. Matching a payment to its source
+   * document by grepping the purpose line is guesswork; this is a fact the
+   * executive signed, so an approver can be shown exactly which file they are
+   * being asked to pay against, and a doctored re-send of that file no longer
+   * matches.
+   *
+   * Optional, and omitted entirely for payments composed from the console --
+   * JCS drops absent keys, so intents without it hash exactly as they did
+   * before this field existed.
+   */
+  media_sha256?: string;
   /** Unique per intent; burned in `consumed_nonces` on first use. */
   nonce: string;
   iat: string;
@@ -308,6 +323,7 @@ export interface MediaLookup {
   attestations: MediaRecord[];
   headline: string;
   detail: string;
+  escrows?: EscrowView[];
 }
 
 /* ---------------------------------------------------------------------------
