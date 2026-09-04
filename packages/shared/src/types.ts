@@ -33,20 +33,36 @@ export type Lane = 'A' | 'B';
  *                 gesture is required that malware cannot perform.
  * ------------------------------------------------------------------------- */
 
-export type DeviceKind = 'console' | 'authenticator' | 'hardware';
+export type DeviceKind = 'console' | 'extension' | 'authenticator' | 'hardware';
 
 export type CredentialBinding = 'software' | 'hardware';
 
-export const DEVICE_ASSURANCE: Record<DeviceKind, { binding: CredentialBinding; label: string; riskPremium: number }> = {
+export const DEVICE_ASSURANCE: Record<
+  DeviceKind,
+  { binding: CredentialBinding; label: string; riskPremium: number }
+> = {
   console: { binding: 'software', label: 'console-resident key', riskPremium: 12 },
+  extension: { binding: 'software', label: 'browser extension key', riskPremium: 8 },
   authenticator: { binding: 'software', label: 'authenticator app', riskPremium: 5 },
   hardware: { binding: 'hardware', label: 'hardware security key', riskPremium: 0 },
 };
 
-/** Roles that may not sign with a console-resident key. */
+/**
+ * Roles that may not sign a payment with a console-resident key.
+ *
+ * The browser extension is a separate origin with its own storage, so a
+ * compromised web page cannot reach its key -- which is why it is permitted
+ * where a page-resident console key is not. It is still on the same machine as
+ * the browser, so it carries a premium and a phone remains the stronger choice.
+ */
 export const OUT_OF_BAND_ROLES: Role[] = ['CFO', 'CEO', 'CTO', 'TREASURY'];
 
-export type SignaturePurpose = 'INTENT' | 'APPROVAL' | 'ENROLLMENT' | 'ATTESTATION';
+export type SignaturePurpose =
+  | 'INTENT'
+  | 'APPROVAL'
+  | 'ENROLLMENT'
+  | 'ATTESTATION'
+  | 'MEDIA';
 
 /* ---------------------------------------------------------------------------
  * Signature envelopes
@@ -74,7 +90,7 @@ export interface SignatureCore {
 export interface Ed25519Assertion extends SignatureCore {
   alg: 'Ed25519';
   binding: 'software';
-  device_kind: 'console' | 'authenticator';
+  device_kind: 'console' | 'extension' | 'authenticator';
   /** Monotonic per-credential counter. A decrease means a cloned key. */
   counter: number;
   /** True when a local gesture unlocked the key (passphrase / biometric). */
@@ -228,6 +244,70 @@ export interface SigningRequest {
   resolved_at?: string | null;
   error?: string | null;
   result?: Record<string, unknown> | null;
+}
+
+/* ---------------------------------------------------------------------------
+ * Media attestations -- provenance for the file itself
+ *
+ * The same idea as everything else here, pointed at a video instead of a
+ * payment. Nobody is asked whether a clip looks synthetic. The question is
+ * whether the person it claims to be from signed it.
+ *
+ * An executive signs the media *as delivered* -- the exact bytes the recipients
+ * received, after the messaging app has finished re-encoding it. Signing the
+ * file before upload would be useless: WhatsApp recompresses, the digest moves,
+ * and every recipient sees a broken signature. So the sender posts first, then
+ * signs what landed.
+ *
+ * What a valid attestation proves: this exact file passed through the hands of
+ * someone holding that key, who was willing to put their name on it.
+ *
+ * What it does not prove: that the content is true. A signature is provenance,
+ * not veracity. Its real power is the negative case -- an unsigned "urgent
+ * message from the CFO" is now conspicuously unsigned, in a channel where
+ * everything genuine carries a signature.
+ * ------------------------------------------------------------------------- */
+
+export type MediaKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE';
+
+/** The object a signer signs to vouch for one exact file. */
+export interface MediaAttestation {
+  v: 1;
+  type: 'media_attestation';
+  /** SHA-256 of the delivered bytes, computed locally on both ends. */
+  sha256: string;
+  kind: MediaKind;
+  bytes: number;
+  /** Where it was posted, and what the signer says it is. */
+  platform: string;
+  caption: string;
+  signer_id: string;
+  at: string;
+}
+
+export interface MediaRecord {
+  sha256: string;
+  kind: MediaKind;
+  bytes: number;
+  platform: string;
+  caption: string;
+  signer_id: string;
+  signer_name: string;
+  signer_role: Role;
+  device_kind: DeviceKind;
+  credential_id: string;
+  signed_at: string;
+  recorded_at: string;
+  audit_seq: number;
+}
+
+export interface MediaLookup {
+  sha256: string;
+  signed: boolean;
+  /** Every signature over this exact file. Usually zero or one. */
+  attestations: MediaRecord[];
+  headline: string;
+  detail: string;
 }
 
 /* ---------------------------------------------------------------------------
@@ -397,6 +477,8 @@ export type AuditType =
   | 'CALLER_DENIED'
   | 'CALLER_CHALLENGE_EXPIRED'
   | 'IMPERSONATION_REPORTED'
+  | 'MEDIA_SIGNED'
+  | 'MEDIA_VERIFY_FAILED'
   | 'INTENT_SIGNED'
   | 'INTENT_VERIFY_FAILED'
   | 'INTENT_ACCEPTED'
