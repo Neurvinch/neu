@@ -11,6 +11,9 @@ import {
 import type {
   CallerAttestation,
   CallerChallenge,
+  MediaAttestation,
+  MediaLookup,
+  MediaRecord,
   Decision,
   SealSigner,
   SigningRequest,
@@ -93,9 +96,9 @@ function loadDevices(): Record<string, StoredDevice> {
   }
 }
 
-function storeDevice(userId: string, dev: StoredDevice): void {
+function storeDevice(slot: string, dev: StoredDevice): void {
   const all = loadDevices();
-  all[userId] = dev;
+  all[slot] = dev;
   fs.mkdirSync(path.dirname(DEVICE_FILE), { recursive: true });
   fs.writeFileSync(DEVICE_FILE, JSON.stringify(all, null, 2));
 }
@@ -130,10 +133,11 @@ export async function login(userId: string, password = 'demo') {
 export async function enroll(
   userId: string,
   label: string,
-  deviceKind: 'authenticator' | 'console' = 'authenticator',
+  deviceKind: 'authenticator' | 'console' | 'extension' = 'authenticator',
 ): Promise<Device> {
   const session = await login(userId);
-  const saved = loadDevices()[userId];
+  const slot = `${userId}:${deviceKind}`;
+  const saved = loadDevices()[slot];
 
   const me = await api<{
     credentials: Array<{ credential_id: string; state: string; counter: number }>;
@@ -193,7 +197,7 @@ export async function enroll(
     },
   );
 
-  storeDevice(userId, {
+  storeDevice(slot, {
     private_key: toHex(privateKey),
     public_key: publicKeyHex,
     credential_id: finished.credential_id,
@@ -289,6 +293,40 @@ export async function approveEnrollments(approvers: Device[]) {
       }
     }
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Media provenance
+ * ------------------------------------------------------------------------- */
+
+/** Stand-in for the extension hashing the delivered bytes in the page. */
+export function digestOf(bytes: string): { sha256: string; bytes: number } {
+  return { sha256: sha256(bytes), bytes: Buffer.byteLength(bytes) };
+}
+
+export async function signMedia(
+  device: Device,
+  media: { sha256: string; bytes: number; kind: string; caption: string },
+) {
+  const attestation = await api<MediaAttestation>('/api/media/attestation', {
+    body: {
+      sha256: media.sha256,
+      kind: media.kind,
+      bytes: media.bytes,
+      platform: 'WhatsApp Web',
+      caption: media.caption,
+    },
+    token: device.token,
+  });
+  const signature = await device.signer.sign('MEDIA', sha256(canonicalize(attestation)));
+  return api<MediaRecord>('/api/media/sign', {
+    body: { attestation, signature },
+    token: device.token,
+  });
+}
+
+export async function lookupMedia(device: Device, sha256Hex: string) {
+  return api<MediaLookup>(`/api/media/${sha256Hex}`, { token: device.token });
 }
 
 /* ---------------------------------------------------------------------------
