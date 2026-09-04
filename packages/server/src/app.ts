@@ -1,7 +1,15 @@
 import cors from 'cors';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import { DEVICE_ASSURANCE, OUT_OF_BAND_ROLES, POLICY, TIER_CONFIG } from '@seal/shared';
+import {
+  buildIntent,
+  canonicalize,
+  DEVICE_ASSURANCE,
+  OUT_OF_BAND_ROLES,
+  POLICY,
+  sha256Hex,
+  TIER_CONFIG,
+} from '@seal/shared';
 import type { DeviceKind } from '@seal/shared';
 import { RP_ID } from '@seal/shared/webauthn';
 import { attachUser, login, logout, requireUser } from './auth.js';
@@ -40,7 +48,8 @@ import {
   requestEnrollmentApprovalSignature,
   requestIntentSignature,
 } from './core/signing-requests.js';
-import { credentialsFor, getIntentRow, listUsers, parseIntent } from './core/repo.js';
+import { credentialsFor, getIntentRow, getUser, listUsers, parseIntent } from './core/repo.js';
+import { signWithSimulatedDevice } from './core/sim-signer.js';
 import {
   acceptIntent,
   buildBundle,
@@ -625,6 +634,90 @@ export function createApp() {
   app.get('/api/metrics', (req, res) => {
     requireUser(req);
     ok(res, metrics());
+  });
+
+  /* --------------------------------------------------------------------
+   * Dev / Simulation Helper (Lab interaction & testing)
+   * ------------------------------------------------------------------ */
+
+  app.post('/api/dev/exec-action', async (req, res) => {
+    requireUser(req);
+    const { action } = req.body ?? {};
+
+    if (action === 'sign_media') {
+      const { sha256, kind = 'IMAGE', bytes = 0, caption = '', user_id = 'u_rahul' } = req.body;
+      const user = getUser(user_id);
+      if (!user) throw bad('NO_SUCH_USER');
+      const att = mediaAttestation({
+        sha256: String(sha256).toLowerCase(),
+        kind,
+        bytes: Number(bytes),
+        platform: 'WhatsApp Web',
+        caption: String(caption),
+        signer_id: user.id,
+        at: new Date().toISOString(),
+      });
+      const hash = await sha256Hex(canonicalize(att));
+      const signature = await signWithSimulatedDevice(user.id, 'MEDIA', hash);
+      if (!signature) throw bad('NO_SIMULATED_KEY', `No simulated device key enrolled for ${user.id}`);
+      const rec = await signMedia({ actor: user, attestation: att, signature });
+      return ok(res, rec);
+    }
+
+    if (action === 'confirm_challenge') {
+      const { challenge_id, user_id = 'u_rahul' } = req.body;
+      const user = getUser(user_id);
+      if (!user) throw bad('NO_SUCH_USER');
+      const att = attestationPayload(challenge_id, user.id);
+      const hash = await sha256Hex(canonicalize(att));
+      const signature = await signWithSimulatedDevice(user.id, 'ATTESTATION', hash);
+      if (!signature) throw bad('NO_SIMULATED_KEY', `No simulated device key enrolled for ${user.id}`);
+      const confirmed = await confirmChallenge(challenge_id, user, signature);
+      return ok(res, confirmed);
+    }
+
+    if (action === 'create_escrow_media') {
+      const {
+        media_sha256,
+        user_id = 'u_rahul',
+        payee = { name: 'Alton Logistics Pvt Ltd', account: '50100234564419', ifsc: 'HDFC0001234' },
+        amount = '4200000.00',
+        purpose = `WhatsApp invoice Media #${String(media_sha256).slice(0, 10)} settlement`,
+      } = req.body;
+      const user = getUser(user_id);
+      if (!user) throw bad('NO_SUCH_USER');
+      const intent = buildIntent({
+        org_id: CONFIG.orgId,
+        type: 'wire_transfer',
+        payee,
+        amount: { value: amount, currency: 'INR' },
+        purpose,
+        deadline: new Date(Date.now() + 48 * 3600_000).toISOString(),
+        originator: { user_id: user.id, role: user.role as 'CEO' },
+        media_sha256: String(media_sha256).toLowerCase(),
+      });
+      const reqView = requestIntentSignature(user, intent);
+      const signature = await signWithSimulatedDevice(user.id, 'INTENT', reqView.payload_hash);
+      if (!signature) throw bad('NO_SIMULATED_KEY', `No simulated device key enrolled for ${user.id}`);
+      await fulfilRequest({ id: reqView.id, actor: user, signature });
+      const employee = getUser('u_aravind')!;
+      const escrow = acceptIntent(intent.txn_id, employee);
+      return ok(res, escrow);
+    }
+
+    if (action === 'approve_escrow') {
+      const { escrow_id, user_id = 'u_priya' } = req.body;
+      const user = getUser(user_id);
+      if (!user) throw bad('NO_SUCH_USER');
+      const reqView = requestApprovalSignature(user, escrow_id, 'APPROVE');
+      const signature = await signWithSimulatedDevice(user.id, reqView.purpose, reqView.payload_hash);
+      if (!signature) throw bad('NO_SIMULATED_KEY', `No simulated device key enrolled for ${user.id}`);
+      await fulfilRequest({ id: reqView.id, actor: user, signature });
+      const updated = escrowView(escrow_id);
+      return ok(res, updated);
+    }
+
+    throw bad('UNKNOWN_ACTION');
   });
 
   /* --------------------------------------------------------------------
