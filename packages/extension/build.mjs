@@ -45,13 +45,29 @@ const builds = [
   { entryPoints: [path.join(root, 'src/content.ts')], outfile: path.join(out, 'content.js'), format: 'iife' },
 ];
 
+function printLoadInstructions() {
+  // Chrome wants the folder containing manifest.json, which is the build
+  // output and not the package root. Printing the absolute path saves
+  // everyone the "Manifest file is missing or unreadable" detour.
+  console.log("");
+  console.log("[seal-ext] Load it in Chrome:");
+  console.log("  1. chrome://extensions  ->  enable Developer mode");
+  console.log("  2. Load unpacked  ->  select EXACTLY this folder:");
+  console.log("");
+  console.log("     " + out);
+  console.log("");
+  console.log("  (the package root has no manifest; the built dist/ folder does)");
+  console.log("");
+}
+
 if (watch) {
   for (const b of builds) {
     const ctx = await esbuild.context({ ...shared, ...b });
     await ctx.watch();
   }
-  console.log('[seal-ext] watching');
+  printLoadInstructions();
+  console.log('[seal-ext] watching for changes');
 } else {
   await Promise.all(builds.map((b) => esbuild.build({ ...shared, ...b })));
-  console.log('[seal-ext] built to packages/extension/dist');
+  printLoadInstructions();
 }
