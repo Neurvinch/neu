@@ -693,19 +693,20 @@ export function VishingLab({
               {/* WhatsApp Web Container */}
               <div
                 style={{
-                  background: '#0b141a',
+                  background: '#f8f5fc',
                   borderRadius: 12,
-                  border: '1px solid #222d34',
+                  border: '1px solid var(--line)',
                   overflow: 'hidden',
                   marginBottom: 14,
+                  boxShadow: 'var(--shadow-sm)',
                 }}
               >
                 {/* WhatsApp Chat Header */}
                 <div
                   style={{
-                    background: '#202c33',
+                    background: '#f0f2f5',
                     padding: '10px 14px',
-                    borderBottom: '1px solid #2a3942',
+                    borderBottom: '1px solid #e2daf0',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
@@ -717,8 +718,8 @@ export function VishingLab({
                       width: 36,
                       height: 36,
                       borderRadius: '50%',
-                      background: '#00a884',
-                      color: '#111b21',
+                      background: '#7c3aed',
+                      color: '#ffffff',
                       display: 'grid',
                       placeItems: 'center',
                       fontWeight: 800,
@@ -734,17 +735,17 @@ export function VishingLab({
                         width: 10,
                         height: 10,
                         borderRadius: '50%',
-                        background: '#00a884',
-                        border: '2px solid #202c33',
+                        background: '#059669',
+                        border: '2px solid #f0f2f5',
                       }}
                     />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: '#e9edef' }}>Rahul Menon (CEO)</div>
-                    <div style={{ fontSize: 11, color: '#8696a0' }}>+91 98400 11234 · Online</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#1d1335' }}>Rahul Menon (CEO)</div>
+                    <div style={{ fontSize: 11, color: '#5e527d' }}>+91 98400 11234 · Online</div>
                   </div>
                   <div className="spacer" />
-                  <div style={{ display: 'flex', gap: 14, color: '#aebac1', fontSize: 14 }}>
+                  <div style={{ display: 'flex', gap: 14, color: '#54656f', fontSize: 14 }}>
                     <span title="Search">🔍</span>
                     <span title="Phone Call">📞</span>
                     <span title="Video Call">📹</span>
@@ -759,29 +760,31 @@ export function VishingLab({
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 14,
-                    background: '#0b141a',
+                    background: '#f5f1fa',
                   }}
                 >
                   {/* Date Chip */}
-                  <div style={{ alignSelf: 'center', background: '#182229', color: '#8696a0', fontSize: 11, padding: '3px 10px', borderRadius: 6, fontWeight: 600 }}>
+                  <div style={{ alignSelf: 'center', background: '#ffffff', color: '#5e527d', fontSize: 11, padding: '3px 10px', borderRadius: 6, fontWeight: 600, border: '1px solid #e2daf0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
                     TODAY
                   </div>
 
                   {/* Message 1: Urgent Text Message Bubble */}
                   <div
                     style={{
-                      background: '#202c33',
+                      background: '#ffffff',
                       borderRadius: '0 8px 8px 8px',
                       padding: '10px 12px',
                       maxWidth: '92%',
                       alignSelf: 'flex-start',
-                      color: '#e9edef',
+                      color: '#1d1335',
                       fontSize: 13,
                       lineHeight: 1.45,
+                      border: '1px solid #e2daf0',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                     }}
                   >
                     Hey Aravind, I am in an urgent acquisition board meeting. Please initiate a wire transfer of <strong>₹42,00,000</strong> for the Alton Logistics vendor invoice before 2 PM today. Reference is <strong>TX-4F1593</strong>.
-                    <div style={{ textAlign: 'right', fontSize: 10, color: '#8696a0', marginTop: 4 }}>
+                    <div style={{ textAlign: 'right', fontSize: 10, color: '#8b7fa8', marginTop: 4 }}>
                       11:41 AM <span style={{ color: '#53bdeb' }}>✓✓</span>
                     </div>
 
@@ -791,9 +794,9 @@ export function VishingLab({
                         marginTop: 8,
                         padding: '8px 10px',
                         borderRadius: 8,
-                        border: '1px solid rgba(240, 180, 41, 0.45)',
-                        background: 'rgba(240, 180, 41, 0.1)',
-                        color: '#f0b429',
+                        border: '1px solid rgba(217, 119, 6, 0.35)',
+                        background: 'rgba(217, 119, 6, 0.08)',
+                        color: '#b45309',
                         fontSize: 12,
                       }}
                     >
@@ -805,8 +808,8 @@ export function VishingLab({
                             letterSpacing: '0.14em',
                             padding: '2px 6px',
                             borderRadius: 4,
-                            background: '#f0b429',
-                            color: '#1b1400',
+                            background: '#d97706',
+                            color: '#ffffff',
                           }}
                         >
                           SEAL
@@ -817,14 +820,14 @@ export function VishingLab({
                       <div className="row" style={{ marginTop: 8, gap: 6 }}>
                         <button
                           className="btn sm"
-                          style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '3px 8px' }}
+                          style={{ background: '#7c3aed', color: '#ffffff', border: '1px solid #7c3aed', fontSize: 11, padding: '3px 8px', fontWeight: 600 }}
                           onClick={() => executeLookup('TX-4F1593', setChatBadgeResult)}
                         >
                           Check TX-4F1593 (Genuine)
                         </button>
                         <button
                           className="btn sm"
-                          style={{ background: '#fff', color: '#1b1400', fontSize: 11, padding: '3px 8px' }}
+                          style={{ background: '#ffffff', color: '#5e527d', border: '1px solid #e2daf0', fontSize: 11, padding: '3px 8px' }}
                           onClick={() => executeLookup('TX-MULE-404', setChatBadgeResult)}
                         >
                           Check TX-MULE-404 (Fake)
@@ -847,9 +850,9 @@ export function VishingLab({
                             marginTop: 8,
                             padding: '8px 10px',
                             borderRadius: 6,
-                            background: chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
-                            border: `1px solid ${chatBadgeResult.authorized ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
-                            color: chatBadgeResult.authorized ? '#38d39f' : '#ff8f8f',
+                            background: chatBadgeResult.authorized ? 'rgba(5, 150, 105, 0.08)' : 'rgba(225, 29, 72, 0.08)',
+                            border: `1px solid ${chatBadgeResult.authorized ? 'rgba(5, 150, 105, 0.35)' : 'rgba(225, 29, 72, 0.35)'}`,
+                            color: chatBadgeResult.authorized ? '#047857' : '#be123c',
                           }}
                         >
                           <div style={{ fontWeight: 700 }}>{chatBadgeResult.headline}</div>
@@ -862,12 +865,14 @@ export function VishingLab({
                   {/* Message 2: WhatsApp Voice Note (Audio) */}
                   <div
                     style={{
-                      background: '#202c33',
+                      background: '#ffffff',
                       borderRadius: '0 8px 8px 8px',
                       padding: '10px 12px',
                       maxWidth: '92%',
                       alignSelf: 'flex-start',
-                      color: '#e9edef',
+                      color: '#1d1335',
+                      border: '1px solid #e2daf0',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                     }}
                   >
                     {/* Voice Note Player Bar */}
@@ -876,9 +881,10 @@ export function VishingLab({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 10,
-                        background: '#111b21',
+                        background: '#f4f0fb',
                         padding: '8px 12px',
                         borderRadius: 8,
+                        border: '1px solid #e2daf0',
                       }}
                     >
                       <button
@@ -887,8 +893,8 @@ export function VishingLab({
                           width: 36,
                           height: 36,
                           borderRadius: '50%',
-                          background: '#00a884',
-                          color: '#111b21',
+                          background: '#7c3aed',
+                          color: '#ffffff',
                           display: 'grid',
                           placeItems: 'center',
                           cursor: 'pointer',
@@ -908,7 +914,7 @@ export function VishingLab({
                               style={{
                                 width: 3,
                                 height: h,
-                                background: audioPlaying ? '#00a884' : '#8696a0',
+                                background: audioPlaying ? '#7c3aed' : '#8b7fa8',
                                 borderRadius: 2,
                                 opacity: i < 7 && audioPlaying ? 1 : 0.6,
                                 transition: 'height 0.2s ease',
@@ -916,7 +922,7 @@ export function VishingLab({
                             />
                           ))}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8696a0', marginTop: 2 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#5e527d', marginTop: 2 }}>
                           <span>{audioPlaying ? '0:07 / 0:14' : '0:14'}</span>
                           <span>Voice Note · 11:42 AM <span style={{ color: '#53bdeb' }}>✓✓</span></span>
                         </div>
@@ -929,8 +935,8 @@ export function VishingLab({
                         marginTop: 10,
                         padding: 10,
                         borderRadius: 8,
-                        background: 'rgba(20, 31, 46, 0.9)',
-                        border: '1px solid rgba(106, 168, 255, 0.35)',
+                        background: '#faf8fe',
+                        border: '1px solid #e2daf0',
                       }}
                     >
                       <div className="row" style={{ alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -941,8 +947,8 @@ export function VishingLab({
                             letterSpacing: '0.12em',
                             padding: '2px 5px',
                             borderRadius: 4,
-                            background: '#2f4d75',
-                            color: '#8ab4f8',
+                            background: 'rgba(124, 58, 237, 0.12)',
+                            color: '#7c3aed',
                           }}
                         >
                           SEAL IN-SITU SCANNER · AUDIO
@@ -965,7 +971,7 @@ export function VishingLab({
                         </button>
                         <button
                           className="btn sm"
-                          style={{ fontSize: 11, padding: '3px 8px', background: 'var(--panel-2)', color: 'var(--fg)' }}
+                          style={{ fontSize: 11, padding: '3px 8px', background: '#ffffff', color: 'var(--text)', border: '1px solid var(--line)' }}
                           onClick={() => signMediaAsCEO(audioSha, 'AUDIO', 'CEO voice authorization note', setAudioLookup)}
                         >
                           ✍️ Sign as CEO Key
@@ -989,8 +995,8 @@ export function VishingLab({
                             marginTop: 8,
                             padding: 8,
                             borderRadius: 6,
-                            background: audioLookup.signed ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
-                            border: `1px solid ${audioLookup.signed ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
+                            background: audioLookup.signed ? 'rgba(5, 150, 105, 0.08)' : 'rgba(225, 29, 72, 0.08)',
+                            border: `1px solid ${audioLookup.signed ? 'rgba(5, 150, 105, 0.35)' : 'rgba(225, 29, 72, 0.35)'}`,
                           }}
                         >
                           <div style={{ fontWeight: 700, fontSize: 12, color: audioLookup.signed ? 'var(--ok)' : 'var(--bad)' }}>
@@ -1003,7 +1009,7 @@ export function VishingLab({
                           </div>
                         </div>
                       ) : (
-                        <div style={{ fontSize: 11, color: '#8696a0', marginTop: 6 }}>
+                        <div style={{ fontSize: 11, color: '#5e527d', marginTop: 6 }}>
                           💡 Click <strong>Verify Signature</strong> to compute the audio waveform hash and check cryptographic provenance on the ledger.
                         </div>
                       )}
@@ -1013,21 +1019,23 @@ export function VishingLab({
                   {/* Message 3: WhatsApp Invoice Attachment (Image/PDF) */}
                   <div
                     style={{
-                      background: '#202c33',
+                      background: '#ffffff',
                       borderRadius: '0 8px 8px 8px',
                       padding: '10px 12px',
                       maxWidth: '92%',
                       alignSelf: 'flex-start',
-                      color: '#e9edef',
+                      color: '#1d1335',
+                      border: '1px solid #e2daf0',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                     }}
                   >
                     {/* Invoice Attachment Preview Box */}
                     <div
                       style={{
-                        background: '#111b21',
+                        background: '#f4f0fb',
                         padding: 10,
                         borderRadius: 8,
-                        border: '1px solid #2a3942',
+                        border: '1px solid #e2daf0',
                         display: 'flex',
                         gap: 10,
                         alignItems: 'center',
@@ -1038,7 +1046,7 @@ export function VishingLab({
                           width: 42,
                           height: 48,
                           borderRadius: 6,
-                          background: 'linear-gradient(135deg, #ef4444, #991b1b)',
+                          background: 'linear-gradient(135deg, #e11d48, #be123c)',
                           color: '#fff',
                           display: 'grid',
                           placeItems: 'center',
@@ -1050,15 +1058,15 @@ export function VishingLab({
                         PDF
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 12, color: '#e9edef' }}>TAX_INVOICE_ALTON_9842.pdf</div>
-                        <div style={{ fontSize: 11, color: '#8696a0', marginTop: 2 }}>
+                        <div style={{ fontWeight: 600, fontSize: 12, color: '#1d1335' }}>TAX_INVOICE_ALTON_9842.pdf</div>
+                        <div style={{ fontSize: 11, color: '#5e527d', marginTop: 2 }}>
                           Payee: <strong>Alton Logistics Pvt Ltd</strong> · <strong>₹42,00,000.00</strong>
                         </div>
-                        <div className="mono" style={{ fontSize: 10, color: '#8696a0', marginTop: 2 }}>
+                        <div className="mono" style={{ fontSize: 10, color: '#5e527d', marginTop: 2 }}>
                           Acct: 50100234564419 · IFSC: HDFC0001234
                         </div>
                       </div>
-                      <div style={{ alignSelf: 'flex-end', fontSize: 10, color: '#8696a0' }}>
+                      <div style={{ alignSelf: 'flex-end', fontSize: 10, color: '#8b7fa8' }}>
                         11:43 AM <span style={{ color: '#53bdeb' }}>✓✓</span>
                       </div>
                     </div>
@@ -1069,8 +1077,8 @@ export function VishingLab({
                         marginTop: 10,
                         padding: 10,
                         borderRadius: 8,
-                        background: 'rgba(20, 31, 46, 0.9)',
-                        border: '1px solid rgba(106, 168, 255, 0.35)',
+                        background: '#faf8fe',
+                        border: '1px solid #e2daf0',
                       }}
                     >
                       <div className="row" style={{ alignItems: 'center', gap: 6, marginBottom: 6 }}>
@@ -1081,8 +1089,8 @@ export function VishingLab({
                             letterSpacing: '0.12em',
                             padding: '2px 5px',
                             borderRadius: 4,
-                            background: '#2f4d75',
-                            color: '#8ab4f8',
+                            background: 'rgba(124, 58, 237, 0.12)',
+                            color: '#7c3aed',
                           }}
                         >
                           SEAL IN-SITU SCANNER · INVOICE
@@ -1105,7 +1113,7 @@ export function VishingLab({
                         </button>
                         <button
                           className="btn sm"
-                          style={{ fontSize: 11, padding: '3px 8px', background: 'var(--panel-2)', color: 'var(--fg)' }}
+                          style={{ fontSize: 11, padding: '3px 8px', background: '#ffffff', color: 'var(--text)', border: '1px solid var(--line)' }}
                           onClick={() => signMediaAsCEO(invoiceSha, 'IMAGE', 'Invoice AL-9842 authenticated by CEO', setInvoiceLookup)}
                         >
                           ✍️ Sign as CEO Key
@@ -1127,8 +1135,8 @@ export function VishingLab({
                             marginTop: 8,
                             padding: 8,
                             borderRadius: 6,
-                            background: invoiceLookup.signed ? 'rgba(56, 211, 159, 0.15)' : 'rgba(255, 107, 107, 0.15)',
-                            border: `1px solid ${invoiceLookup.signed ? 'rgba(56, 211, 159, 0.5)' : 'rgba(255, 107, 107, 0.5)'}`,
+                            background: invoiceLookup.signed ? 'rgba(5, 150, 105, 0.08)' : 'rgba(225, 29, 72, 0.08)',
+                            border: `1px solid ${invoiceLookup.signed ? 'rgba(5, 150, 105, 0.35)' : 'rgba(225, 29, 72, 0.35)'}`,
                           }}
                         >
                           <div style={{ fontWeight: 700, fontSize: 12, color: invoiceLookup.signed ? 'var(--ok)' : 'var(--bad)' }}>
@@ -1149,15 +1157,15 @@ export function VishingLab({
                             marginTop: 8,
                             padding: '8px 10px',
                             borderRadius: 6,
-                            background: 'rgba(240, 180, 41, 0.15)',
-                            border: '1px solid rgba(240, 180, 41, 0.5)',
+                            background: 'rgba(124, 58, 237, 0.08)',
+                            border: '1px solid rgba(124, 58, 237, 0.28)',
                             fontSize: 11,
                           }}
                         >
                           <div className="row" style={{ alignItems: 'center' }}>
-                            <span style={{ fontWeight: 700, color: '#f0b429' }}>⚡ Time-Boxed Escrow #{linkedEscrow.txn_id} Active</span>
+                            <span style={{ fontWeight: 700, color: '#7c3aed' }}>⚡ Time-Boxed Escrow #{linkedEscrow.txn_id} Active</span>
                             <div className="spacer" />
-                            <span className="mono" style={{ color: '#fff' }}>{linkedEscrow.state}</span>
+                            <span className="mono" style={{ color: '#7c3aed', fontWeight: 600 }}>{linkedEscrow.state}</span>
                           </div>
                           <div style={{ color: 'var(--dim)', marginTop: 2 }}>
                             Bound to invoice hash · Requires {linkedEscrow.required_approvals} approvers in Extension Inbox →
@@ -1188,7 +1196,7 @@ export function VishingLab({
                   borderRadius: 12,
                   border: '1px solid var(--line)',
                   overflow: 'hidden',
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                  boxShadow: '0 8px 30px rgba(124, 58, 237, 0.12)',
                 }}
               >
                 {/* Extension Header */}
@@ -1208,7 +1216,7 @@ export function VishingLab({
                   <select
                     value={extActivePersona}
                     onChange={(e) => setExtActivePersona(e.target.value as 'u_priya')}
-                    style={{ fontSize: 11, padding: '2px 6px', background: 'var(--bg)', border: '1px solid var(--line-soft)', borderRadius: 4 }}
+                    style={{ fontSize: 11, padding: '2px 6px', background: '#ffffff', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 4 }}
                   >
                     <option value="u_priya">Priya Nair (CFO)</option>
                     <option value="u_anita">Anita Desai (CTO)</option>
@@ -1274,8 +1282,8 @@ export function VishingLab({
                             marginBottom: 14,
                             padding: 10,
                             borderRadius: 8,
-                            background: 'rgba(255, 107, 107, 0.1)',
-                            border: '1px solid rgba(255, 107, 107, 0.4)',
+                            background: 'rgba(225, 29, 72, 0.08)',
+                            border: '1px solid rgba(225, 29, 72, 0.3)',
                           }}
                         >
                           <div className="row" style={{ alignItems: 'center', marginBottom: 4 }}>
@@ -1283,7 +1291,7 @@ export function VishingLab({
                             <div className="spacer" />
                             <span className="mono dim" style={{ fontSize: 10 }}>{activeChallenge.seconds_remaining}s left</span>
                           </div>
-                          <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--fg)', marginTop: 4 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)', marginTop: 4 }}>
                             Are you on a {activeChallenge.channel.toLowerCase()} with Aravind Kumar right now?
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 8px' }}>
@@ -1291,13 +1299,13 @@ export function VishingLab({
                           </div>
                           <div
                             style={{
-                              fontSize: 18,
+                              fontSize: 22,
                               fontWeight: 800,
                               fontFamily: 'var(--mono)',
-                              letterSpacing: '0.1em',
+                              letterSpacing: '0.12em',
                               textAlign: 'center',
                               margin: '6px 0',
-                              color: '#fff',
+                              color: 'var(--bad)',
                             }}
                           >
                             {activeChallenge.code}
