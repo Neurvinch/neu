@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "SEAL — signed media & authorization",
+  "version": "0.2.0",
+  "description": "Verify who signed a photo, video or voice note on WhatsApp Web, sign your own, and run the whole payment authorization flow without leaving the tab.",
+  "permissions": ["storage", "contextMenus", "notifications", "alarms"],
+  "host_permissions": ["http://localhost:4000/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "SEAL" },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": { "128": "icons/icon128.png" }
+}
