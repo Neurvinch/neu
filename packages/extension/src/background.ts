@@ -1,4 +1,4 @@
-import { canonicalize, sha256Hex, utf8 } from '@seal/shared';
+import { buildIntent, canonicalize, sha256Hex, utf8 } from '@seal/shared';
 import type { MediaKind, SignaturePurpose } from '@seal/shared';
 import {
   api,
@@ -37,6 +37,20 @@ import {
  */
 
 const hashOf = async (value: unknown) => sha256Hex(utf8(canonicalize(value)));
+
+/**
+ * A missing passphrase must stay missing.
+ *
+ * String(undefined) is "undefined" -- a non-empty string that sails past every
+ * truthiness check and then simply fails to decrypt. That turns "you forgot the
+ * passphrase" into "wrong passphrase", and makes the rule that money always
+ * re-asks depend on a decrypt failure instead of an explicit gate.
+ */
+function passphraseOf(msg: { [k: string]: unknown }): string | undefined {
+  return typeof msg.passphrase === 'string' && msg.passphrase.length > 0
+    ? msg.passphrase
+    : undefined;
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
@@ -149,14 +163,27 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       lock();
       return true;
 
+    /**
+     * A content script cannot open the popup itself -- chrome.action is only
+     * available to the worker, and even here Chrome only allows it while a user
+     * gesture is still in flight. Failing softly is correct: the chat bubble
+     * has already stashed the demand and told the person to click the toolbar
+     * icon, so a refusal costs nothing.
+     */
+    case 'OPEN_POPUP':
+      await chrome.action.openPopup().catch(() => undefined);
+      return true;
+
     /* --- the key --------------------------------------------------------- */
 
     case 'CREATE_KEY': {
       const cfg = await config();
       if (!cfg.userId) throw new Error('Sign in first.');
+      const passphrase = passphraseOf(msg);
+      if (!passphrase) throw new Error('Choose a passphrase for this key.');
       const vault = await createVault({
         userId: cfg.userId,
-        passphrase: String(msg.passphrase),
+        passphrase,
         label: String(msg.label ?? 'Browser extension'),
       });
 
@@ -174,7 +201,7 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       const proof = await signWithVault({
         purpose: 'ENROLLMENT',
         payloadHash: await hashOf(payload),
-        passphrase: String(msg.passphrase),
+        passphrase,
       });
       return api('/api/credentials/enroll/finish', {
         body: {
@@ -206,7 +233,7 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       const signature = await signWithVault({
         purpose: 'MEDIA',
         payloadHash: await hashOf(attestation),
-        passphrase: msg.passphrase ? String(msg.passphrase) : undefined,
+        passphrase: passphraseOf(msg),
         remember: true,
       });
       return submitMediaSignature(attestation, signature);
@@ -236,9 +263,61 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       const signature = await signWithVault({
         purpose: request.purpose as SignaturePurpose,
         payloadHash: request.payload_hash,
-        passphrase: String(msg.passphrase),
+        passphrase: passphraseOf(msg),
       });
       return fulfilSigningRequest(request.id, signature);
+    }
+
+    case 'CREATE_ESCROW_FOR_MEDIA': {
+      const cfg = await config();
+      if (!cfg.userId || !cfg.userRole) throw new Error('Sign in first.');
+      const policy = await api<{ org_id: string }>('/api/policy');
+      const mediaSha = String(msg.mediaSha256 || '');
+      const payeeName = String(msg.payeeName || 'Vendor');
+      const account = String(msg.account || '50100234564419');
+      const ifsc = String(msg.ifsc || 'HDFC0001234').toUpperCase();
+      const amount = String(msg.amount || '4200000.00');
+      const purpose = String(msg.purpose || (mediaSha ? `Media #${mediaSha.slice(0, 10)} settlement` : 'Vendor settlement'));
+
+      const intent = buildIntent({
+        org_id: policy.org_id,
+        type: 'wire_transfer',
+        payee: { name: payeeName, account, ifsc },
+        amount: { value: amount, currency: 'INR' },
+        purpose,
+        deadline: new Date(Date.now() + 48 * 3600_000).toISOString(),
+        originator: { user_id: cfg.userId, role: cfg.userRole as 'CFO' },
+        // Signed, so an approver can be shown the exact file this came from.
+        media_sha256: /^[0-9a-f]{64}$/.test(mediaSha) ? mediaSha : undefined,
+      });
+
+      const req = await requestIntentSignature(intent);
+      const signature = await signWithVault({
+        purpose: 'INTENT',
+        payloadHash: req.payload_hash,
+        passphrase: passphraseOf(msg),
+      });
+      await fulfilSigningRequest(req.id, signature);
+
+      const escrow = await api<import('@seal/shared').EscrowView>(`/api/intents/${intent.txn_id}/accept`, {
+        method: 'POST',
+      });
+      void refreshBadge();
+      return escrow;
+    }
+
+    case 'APPROVE_ESCROW_DIRECT': {
+      const escrowId = String(msg.escrowId);
+      const decision = (msg.decision as 'APPROVE' | 'REJECT') ?? 'APPROVE';
+      const req = await requestApproval(escrowId, decision);
+      const signature = await signWithVault({
+        purpose: req.purpose as SignaturePurpose,
+        payloadHash: req.payload_hash,
+        passphrase: passphraseOf(msg),
+      });
+      const fulfilled = await fulfilSigningRequest(req.id, signature);
+      void refreshBadge();
+      return fulfilled;
     }
 
     case 'DECLINE':
@@ -265,7 +344,7 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       const signature = await signWithVault({
         purpose: 'ATTESTATION',
         payloadHash: await hashOf(attestation),
-        passphrase: String(msg.passphrase),
+        passphrase: passphraseOf(msg),
       });
       return confirmChallenge(String(msg.id), signature);
     }
@@ -283,12 +362,44 @@ async function refreshBadge() {
   try {
     const cfg = await config();
     if (!cfg.token) return chrome.action.setBadgeText({ text: '' });
-    const [requests, challenges] = await Promise.all([listSigningRequests(), listChallenges()]);
+    const [requests, challenges, escrows] = await Promise.all([
+      listSigningRequests().catch(() => []),
+      listChallenges().catch(() => []),
+      listEscrows().catch(() => []),
+    ]);
+
+    const myPendingEscrows = escrows.filter(
+      (e) =>
+        e.state === 'PENDING_QUORUM' &&
+        ['CEO', 'CTO', 'TREASURY', 'CFO'].includes(cfg.userRole ?? '') &&
+        e.opened_by !== cfg.userId &&
+        e.intent.originator.user_id !== cfg.userId &&
+        !e.approvals.some((a) => a.approver_id === cfg.userId),
+    );
+
     const waiting =
       requests.filter((r) => r.state === 'PENDING' && r.subject_user_id === cfg.userId).length +
-      challenges.filter((c) => c.state === 'PENDING' && c.claimed_user_id === cfg.userId).length;
-    await chrome.action.setBadgeBackgroundColor({ color: '#ff6b6b' });
+      challenges.filter((c) => c.state === 'PENDING' && c.claimed_user_id === cfg.userId).length +
+      myPendingEscrows.length;
+
+    await chrome.action.setBadgeBackgroundColor({ color: '#ff4d4f' });
     await chrome.action.setBadgeText({ text: waiting > 0 ? String(waiting) : '' });
+
+    if (myPendingEscrows.length > 0 && chrome.notifications?.create) {
+      const topEscrow = myPendingEscrows[0];
+      const notifyKey = `notified_esc_${topEscrow.escrow_id}`;
+      const memory = await chrome.storage.local.get([notifyKey]);
+      if (!memory[notifyKey]) {
+        await chrome.storage.local.set({ [notifyKey]: true });
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon128.png',
+          title: 'SEAL: Payment Escrow Awaiting Approval',
+          message: `${topEscrow.txn_id}: ${topEscrow.intent.amount.currency} ${topEscrow.intent.amount.value} to ${topEscrow.intent.payee.name}. Click extension to approve.`,
+          priority: 2,
+        });
+      }
+    }
   } catch {
     /* the server may simply not be running */
   }
