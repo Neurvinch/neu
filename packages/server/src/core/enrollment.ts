@@ -137,7 +137,7 @@ export interface EnrolResult {
 export async function finishSoftwareEnrollment(params: {
   userId: string;
   publicKey: string;
-  deviceKind: 'console' | 'authenticator';
+  deviceKind: 'console' | 'extension' | 'authenticator';
   label?: string;
   proof: SignatureEnvelope;
   actorId: string;
