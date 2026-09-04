@@ -22,14 +22,29 @@ export async function api<T = unknown>(
   path: string,
   opts: { method?: string; body?: unknown } = {},
 ): Promise<T> {
-  const res = await fetch(path, {
-    method: opts.method ?? (opts.body ? 'POST' : 'GET'),
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: opts.method ?? (opts.body ? 'POST' : 'GET'),
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+  } catch {
+    // A transport failure is not an API error: no status, no body. Browsers
+    // say "Failed to fetch", which hands the reader an implementation detail
+    // instead of the one fact that helps -- the backend is not answering.
+    // It happens routinely in development, because every server edit restarts
+    // the process and the dev proxy drops the socket mid-flight.
+    const err = new Error(
+      'Cannot reach the SEAL backend. Is it running? Start it with: npm run dev',
+    ) as ApiError;
+    err.status = 0;
+    err.code = 'SEAL_UNREACHABLE';
+    throw err;
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
