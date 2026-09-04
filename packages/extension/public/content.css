@@ -1,0 +1,117 @@
+/* Injected into WhatsApp Web.
+   Everything is namespaced and deliberately does NOT imitate WhatsApp's own
+   chrome. A control that looks native teaches people to trust anything that
+   looks native, which is the exact habit that gets them phished. */
+
+.seal-chip {
+  all: initial;
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 4px 2px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  border: 1px solid #444d5e;
+  background: #10151d;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 11.5px !important;
+  line-height: 1.45 !important;
+  color: #c8d3e6 !important;
+}
+
+.seal-mark {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 9.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #6aa8ff;
+  color: #06101f;
+}
+
+.seal-msg { flex: 1 1 auto; font-weight: 600; }
+
+.seal-detail {
+  flex: 1 1 100%;
+  margin-top: 3px;
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: 400;
+}
+
+/* Signed: calm green. Unsigned: amber, never red -- unsigned is "unverified",
+   not "forged", and the colour has to say the same thing the words do. */
+.seal-chip.seal-ok { border-color: rgba(56, 211, 159, 0.55); background: rgba(56, 211, 159, 0.1); color: #7ee7c2 !important; }
+.seal-chip.seal-ok .seal-mark { background: #38d39f; color: #04150f; }
+
+.seal-chip.seal-unsigned { border-color: rgba(240, 180, 41, 0.55); background: rgba(240, 180, 41, 0.1); color: #f5cf7a !important; }
+.seal-chip.seal-unsigned .seal-mark { background: #f0b429; color: #1b1400; }
+
+.seal-chip.seal-bad { border-color: rgba(255, 107, 107, 0.55); background: rgba(255, 107, 107, 0.1); color: #ff9d9d !important; }
+.seal-chip.seal-busy { opacity: 0.75; }
+
+.seal-btn {
+  all: unset;
+  cursor: pointer;
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid #4a5468;
+  background: #1a2230;
+  color: #dce4f2;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.seal-btn:hover { border-color: #6aa8ff; }
+.seal-btn.seal-sign { background: #6aa8ff; border-color: #6aa8ff; color: #06101f; }
+.seal-btn.seal-cancel { background: transparent; }
+
+/* The unlock sheet. Full-screen, dark, unmistakably not WhatsApp. */
+.seal-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: rgba(4, 7, 12, 0.72);
+  display: grid;
+  place-items: center;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.seal-sheet-inner {
+  width: min(400px, 92vw);
+  padding: 20px;
+  border-radius: 14px;
+  background: #11161f;
+  border: 1px solid #232c3d;
+  color: #e9eef8;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.seal-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.seal-sheet-inner p { margin: 0 0 14px; color: #8c9ab6; font-size: 12.5px; line-height: 1.5; }
+
+.seal-pass {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid #232c3d;
+  background: #0a0e14;
+  color: #e9eef8;
+  font: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.seal-pass:focus { border-color: #6aa8ff; }
+
+.seal-sheet-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.seal-sheet-actions .seal-btn { padding: 9px 16px; }
