@@ -39,7 +39,7 @@ export interface Vault {
   user_id: string;
   credential_id: string;
   public_key: string;
-  device_kind: 'console' | 'authenticator';
+  device_kind: 'console' | 'extension' | 'authenticator';
   label: string;
   created_at: string;
   kdf: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number; salt: string };
@@ -54,7 +54,7 @@ export class WrongPassphrase extends Error {
 }
 
 export interface VaultStore {
-  readonly deviceKind: 'console' | 'authenticator';
+  readonly deviceKind: 'console' | 'extension' | 'authenticator';
   load(userId: string): Vault | null;
   save(vault: Vault): void;
   forget(userId: string): void;
@@ -90,7 +90,7 @@ export function createVaultStore(opts: {
   /** Storage prefix. Separate origins already separate storage; this keeps a
    *  single origin from ever confusing a console key with an authenticator one. */
   namespace: string;
-  deviceKind: 'console' | 'authenticator';
+  deviceKind: 'console' | 'extension' | 'authenticator';
 }): VaultStore {
   const key = (userId: string) => `${opts.namespace}.${userId}`;
 
