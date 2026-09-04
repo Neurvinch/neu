@@ -9,17 +9,27 @@ import type {
   TransactionIntent,
 } from '@seal/shared';
 
-const DEFAULTS = { sealUrl: 'http://localhost:4000', token: null as string | null };
+/**
+ * Every key config() needs must appear here.
+ *
+ * chrome.storage.local.get(obj) returns *only* the keys present in obj, so
+ * anything omitted comes back undefined no matter what was stored. Leaving the
+ * identity fields out meant the extension forgot who you were the moment the
+ * popup asked, and every signing path failed with "Sign in first".
+ */
+const DEFAULTS = {
+  sealUrl: 'http://localhost:4000',
+  token: null as string | null,
+  userId: null as string | null,
+  userName: null as string | null,
+  userRole: null as string | null,
+};
 
-export async function config() {
+export type Config = typeof DEFAULTS;
+
+export async function config(): Promise<Config> {
   const stored = await chrome.storage.local.get(DEFAULTS);
-  return { ...DEFAULTS, ...stored } as {
-    sealUrl: string;
-    token: string | null;
-    userId?: string;
-    userName?: string;
-    userRole?: string;
-  };
+  return { ...DEFAULTS, ...stored } as Config;
 }
 
 export async function api<T = unknown>(
@@ -27,14 +37,25 @@ export async function api<T = unknown>(
   opts: { method?: string; body?: unknown } = {},
 ): Promise<T> {
   const { sealUrl, token } = await config();
-  const res = await fetch(`${sealUrl}${path}`, {
-    method: opts.method ?? (opts.body ? 'POST' : 'GET'),
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${sealUrl}${path}`, {
+      method: opts.method ?? (opts.body ? 'POST' : 'GET'),
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+  } catch {
+    // See the note in the other clients: naming the unreachable service
+    // is the only part of a transport failure worth showing a person.
+    const err = new Error(
+      `Cannot reach SEAL at ${sealUrl}. Is it running, and is the URL right under Key -> Server?`,
+    ) as Error & { code?: string };
+    err.code = 'SEAL_UNREACHABLE';
+    throw err;
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
