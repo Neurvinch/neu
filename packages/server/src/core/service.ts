@@ -171,6 +171,14 @@ export async function submitSignedIntent(params: {
         credential_id: credential!.credential_id,
         binding: credential!.binding,
         device_kind: credential!.device_kind,
+        // How the key proved it was there. Evidence for a later reader; it was
+        // not consulted in deciding whether to accept this signature.
+        presence:
+          'attachment' in signature && signature.attachment
+            ? signature.attachment === 'platform'
+              ? 'BUILT_IN_AUTHENTICATOR'
+              : 'SEPARATE_DEVICE_IN_RANGE'
+            : 'PASSPHRASE',
         counter,
         user_presence: verdict.userVerified ?? true,
         amount: intent.amount,
@@ -366,6 +374,12 @@ export async function recordApproval(params: {
         credential_id: credential.credential_id,
         binding: credential.binding,
         device_kind: credential.device_kind,
+        presence:
+          'attachment' in signature && signature.attachment
+            ? signature.attachment === 'platform'
+              ? 'BUILT_IN_AUTHENTICATOR'
+              : 'SEPARATE_DEVICE_IN_RANGE'
+            : 'PASSPHRASE',
       },
     });
 
