@@ -38,6 +38,14 @@ export interface HardwareCredential {
   /** base64url of the COSE public key. */
   public_key: string;
   counter: number;
+  /**
+   * How this authenticator can be reached: usb, nfc, ble, internal, hybrid.
+   *
+   * "hybrid" is the interesting one -- it is a phone answering over a Bluetooth
+   * proximity tunnel, so the protocol itself has already established that the
+   * device was in the room. Worth recording; not worth trusting on its own.
+   */
+  transports?: string[];
 }
 
 /* --------------------------------------------------------------------------
@@ -69,6 +77,7 @@ export async function verifyHardwareRegistration(params: {
         webauthn_id: info.credential.id,
         public_key: toB64u(info.credential.publicKey),
         counter: info.credential.counter,
+        transports: info.credential.transports ?? [],
       },
     };
   } catch (e) {
