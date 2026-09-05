@@ -128,6 +128,22 @@ export interface WebAuthnEnvelope extends SignatureCore {
     signature: string;
     userHandle?: string | null;
   };
+  /**
+   * How the authenticator was reached, which is the closest thing WebAuthn has
+   * to a proximity claim:
+   *
+   *   platform        the authenticator IS this machine (Windows Hello, Touch
+   *                   ID). Presence is proven by the biometric, not by distance.
+   *   cross-platform  a separate device answered. Over the hybrid transport
+   *                   that means a phone within Bluetooth range of this
+   *                   machine, and the protocol proves the range, not the app.
+   *
+   * Recorded because it is evidence worth keeping, and shown to approvers. It
+   * is deliberately NOT an input to whether the signature is accepted: a key
+   * being nearby is not a decision, and treating it as one would let anything
+   * that compromises this machine spend money while its owner sits beside it.
+   */
+  attachment?: 'platform' | 'cross-platform' | null;
   /** Filled in by the verifier from authenticatorData; ignored on input. */
   counter?: number;
   user_presence?: boolean;
@@ -485,6 +501,7 @@ export type AuditType =
   | 'CREDENTIAL_ENROLL_REQUESTED'
   | 'CREDENTIAL_ENROLL_APPROVED'
   | 'CREDENTIAL_ENROLLED'
+  | 'CREDENTIAL_REVOKED'
   | 'SIGNING_REQUESTED'
   | 'SIGNING_DECLINED'
   | 'SIGNING_EXPIRED'
