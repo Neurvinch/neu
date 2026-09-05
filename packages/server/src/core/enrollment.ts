@@ -217,6 +217,7 @@ export async function finishHardwareEnrollment(params: {
     publicKey: result.credential.public_key,
     webauthnId: result.credential.webauthn_id,
     aaguid: result.aaguid ?? null,
+    transports: result.credential.transports ?? [],
     counter: result.credential.counter,
     label: params.label,
     actorId: params.actorId,
@@ -231,12 +232,16 @@ function register(params: {
   publicKey: string;
   webauthnId: string | null;
   aaguid: string | null;
+  transports?: string[];
   counter?: number;
   label?: string;
   actorId: string;
 }): EnrolResult {
   const existing = getCredential(params.credentialId);
   if (existing && existing.state !== 'REVOKED') throw conflict('CREDENTIAL_EXISTS');
+  // Re-enrolling an authenticator that was retired earlier derives the same
+  // credential id, so the old row is reused instead of colliding with it.
+  const reinstating = !!existing;
 
   const bootstrap = inBootstrap();
   const required = requiredApprovalsFor(params.user.role);
@@ -244,11 +249,16 @@ function register(params: {
   const now = new Date().toISOString();
 
   tx(() => {
+    if (reinstating) {
+      db.prepare(`DELETE FROM credentials WHERE credential_id = ? AND state = 'REVOKED'`).run(
+        params.credentialId,
+      );
+    }
     db.prepare(
       `INSERT INTO credentials
          (credential_id, user_id, binding, device_kind, public_key, webauthn_id, aaguid,
-          label, counter, state, created_at, activated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          transports, label, counter, state, created_at, activated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       params.credentialId,
       params.user.id,
@@ -257,6 +267,7 @@ function register(params: {
       params.publicKey,
       params.webauthnId,
       params.aaguid,
+      JSON.stringify(params.transports ?? []),
       params.label ?? null,
       params.counter ?? 0,
       bootstrap ? 'ACTIVE' : 'PENDING',
@@ -287,6 +298,7 @@ function register(params: {
         binding: params.binding,
         device_kind: params.deviceKind,
         aaguid: params.aaguid,
+        transports: params.transports ?? [],
         public_key: params.publicKey,
         required_approvals: bootstrap ? 0 : required,
         bootstrap_ceremony: bootstrap,
@@ -464,6 +476,62 @@ export async function approveEnrollment(
     required: req.required_approvals,
     activated: count >= req.required_approvals,
   };
+}
+
+/**
+ * Retire a credential.
+ *
+ * Deliberately cheap, and deliberately the mirror image of enrolment.
+ * Admitting a key needs a quorum because it *grants* authority; retiring
+ * one only ever takes authority away, so making it expensive would mean a
+ * person who thinks their key is compromised has to go find two colleagues
+ * before anything happens. The owner can do it alone, immediately.
+ *
+ * The row survives with state REVOKED because live intents reference it and
+ * the audit trail has to stay readable. What does not survive is the
+ * `webauthn_id`: it is moved into the chain and cleared here, which frees
+ * the unique index so the same authenticator can be enrolled again. Before
+ * this existed, "destroy" only wiped the browser and left the server still
+ * trusting the key -- so the credential was both un-revocable and
+ * un-re-registrable.
+ */
+export function revokeCredential(credentialId: string, actor: UserRow, reason: string) {
+  const credential = getCredential(credentialId);
+  if (!credential) throw missing('NO_SUCH_CREDENTIAL');
+  if (credential.user_id !== actor.id) {
+    throw denied('NOT_YOUR_CREDENTIAL', 'You may only retire your own keys.');
+  }
+  if (credential.state === 'REVOKED') return { credential_id: credentialId, already: true };
+
+  const now = new Date().toISOString();
+  tx(() => {
+    db.prepare(
+      `UPDATE credentials SET state = 'REVOKED', webauthn_id = NULL WHERE credential_id = ?`,
+    ).run(credentialId);
+    appendAudit({
+      txn_id: null,
+      type: 'CREDENTIAL_REVOKED',
+      actor: actor.id,
+      payload: {
+        credential_id: credentialId,
+        subject: credential.user_id,
+        device_kind: credential.device_kind,
+        binding: credential.binding,
+        webauthn_id: credential.webauthn_id,
+        signatures_made: credential.counter,
+        reason,
+        at: now,
+        note: "The key can no longer authorize anything. Signatures it already made remain valid and remain in the chain.",
+      },
+    });
+  });
+
+  // The payment rail reads its own copy of the directory, so a retired key
+  // has to disappear from there too or the rail would keep honouring it.
+  publishKeyDirectory();
+  broadcast('credential.revoked', { credential_id: credentialId, user_id: credential.user_id });
+
+  return { credential_id: credentialId, already: false };
 }
 
 export interface EnrollmentListRow {
