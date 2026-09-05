@@ -213,9 +213,24 @@ async function handle(msg: { type: string; [k: string]: unknown }): Promise<unkn
       });
     }
 
-    case 'DESTROY_KEY':
+    /**
+     * Retire the key, server-side first.
+     *
+     * Wiping only local storage leaves the server still trusting the
+     * credential: it stays usable in principle, and it keeps blocking
+     * re-registration of the same authenticator. Local material is cleared only
+     * after the server confirms the credential is retired.
+     */
+    case 'DESTROY_KEY': {
+      const vault = await loadVault();
+      if (vault) {
+        await api(`/api/credentials/${vault.credential_id}/revoke`, {
+          body: { reason: 'Retired from the browser extension' },
+        });
+      }
       await forgetVault();
       return true;
+    }
 
     /* --- media ----------------------------------------------------------- */
 
