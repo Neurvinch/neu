@@ -28,6 +28,7 @@ import {
   finishSoftwareEnrollment,
   inBootstrap,
   listEnrollments,
+  revokeCredential,
 } from './core/enrollment.js';
 import { lookupMedia, mediaAttestation, recentMedia, signMedia } from './core/media.js';
 import {
@@ -214,6 +215,16 @@ export function createApp() {
         actorId: user.id,
       }),
     );
+  });
+
+  /**
+   * Retire a key. Owner only, no quorum: this removes authority rather than
+   * granting it, and someone who suspects their key is compromised should not
+   * have to assemble a committee first.
+   */
+  app.post('/api/credentials/:id/revoke', (req, res) => {
+    const user = requireUser(req);
+    ok(res, revokeCredential(req.params.id, user, String(req.body?.reason ?? 'Retired by owner')));
   });
 
   app.get('/api/credentials/enrollments', (req, res) => {
