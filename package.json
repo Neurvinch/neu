@@ -24,7 +24,8 @@
     "auth": "npm run dev -w @seal/authenticator",
     "test:ext": "tsx scripts/test-extension.ts",
     "build:ext": "npm run build -w @seal/extension",
-    "check:ext": "tsx scripts/check-extension.ts"
+    "check:ext": "tsx scripts/check-extension.ts",
+    "admit": "tsx scripts/admit-pending.ts"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
