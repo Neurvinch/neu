@@ -42,6 +42,25 @@ export function impersonationSignal(userId: string, withinMs = 24 * 3600_000) {
   return { denied: row.denied ?? 0, unanswered: row.unanswered ?? 0, pending: row.pending ?? 0 };
 }
 
+/**
+ * Did this person have a stronger key available than the one they used?
+ *
+ * Not a blocker, and deliberately cheap. Someone's phone is legitimately in
+ * another room. But "the CFO holds a hardware key and this payment was signed
+ * with software" is exactly the shape of an attacker working with a stolen
+ * software credential, and it costs nothing to say so on the approver's screen.
+ */
+export function strongerKeyAvailable(userId: string, usedKind: DeviceKind): boolean {
+  if (usedKind === 'hardware') return false;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM credentials
+       WHERE user_id = ? AND state = 'ACTIVE' AND device_kind = 'hardware'`,
+    )
+    .get(userId) as { n: number };
+  return (row.n ?? 0) > 0;
+}
+
 export interface RiskInput {
   intent: TransactionIntent;
   deviceKind: DeviceKind;
@@ -144,6 +163,17 @@ export function scoreRisk({ intent, deviceKind, now = new Date() }: RiskInput): 
     );
   } else {
     notes.push('Signed with a hardware-bound credential: the key cannot be exported or copied.');
+  }
+
+  if (strongerKeyAvailable(intent.originator.user_id, deviceKind)) {
+    fired.push({
+      id: 'HARDWARE_ENROLLED_BUT_UNUSED',
+      weight: 8,
+      why: 'This executive holds a hardware key, and this payment was signed with software instead',
+    });
+    notes.push(
+      'A hardware key is enrolled for this person but was not the one used. Often innocent; also what a stolen software credential looks like.',
+    );
   }
 
   // Someone has been impersonating this executive recently. That is a fact
