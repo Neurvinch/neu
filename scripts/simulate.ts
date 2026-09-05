@@ -876,6 +876,60 @@ async function main() {
   );
 
   /* =======================================================================
+   * Act 4e -- proximity is evidence, never authority
+   *
+   * The tempting feature is "the key is nearby, so approve". It is the same
+   * mistake as trusting the phone call: it turns an authorization into an
+   * ambient condition, and hands anything that compromises the machine the
+   * ability to spend while the owner sits beside it. So a proximity claim is
+   * recorded and shown, and is worth exactly nothing on its own.
+   * ===================================================================== */
+  fmt.head('Act 4e -- a proximity claim buys nothing');
+
+  await mustFail(
+    'A software signature is dressed up with a hardware proximity claim',
+    ['SIGNATURE_BAD_SIGNATURE', 'SIGNATURE_PAYLOAD_HASH_MISMATCH'],
+    async () => {
+      const request = await requestIntent(cfo, mule2().intent);
+      const signature = await cfo.signer.sign('INTENT', request.payload_hash);
+      // Graft on the field a hardware envelope would carry. For an Ed25519
+      // envelope every field is inside the signed bytes, so the forgery is
+      // detected by the signature itself rather than by a special case.
+      const dressed = { ...signature, attachment: 'platform' };
+      return api(`/api/signing-requests/${request.id}/fulfil`, {
+        body: { signature: dressed },
+        token: cfo.token,
+      });
+    },
+  );
+
+  await mustFail(
+    'An envelope claims hardware binding without a hardware credential',
+    ['SIGNATURE_', 'DEVICE_KIND_MISMATCH', 'CREDENTIAL_IS_NOT_HARDWARE'],
+    async () => {
+      const request = await requestIntent(cfo, mule2().intent);
+      const signature = await cfo.signer.sign('INTENT', request.payload_hash);
+      const dressed = { ...signature, binding: 'hardware', device_kind: 'hardware' };
+      return api(`/api/signing-requests/${request.id}/fulfil`, {
+        body: { signature: dressed },
+        token: cfo.token,
+      });
+    },
+  );
+
+  // And the honest converse: how presence was proven is written down.
+  const presenceChain = await api<{ entries: Array<{ type: string; payload: Record<string, unknown> }> }>(
+    `/api/audit/${legit.intent.txn_id}`,
+    { token: cfo.token },
+  );
+  const signedEntry = presenceChain.entries.find((e) => e.type === 'INTENT_SIGNED');
+  assert(
+    'The chain records how the key proved it was there',
+    typeof signedEntry?.payload.presence === 'string',
+    String(signedEntry?.payload.presence),
+  );
+
+  /* =======================================================================
    * Act 5 -- the window closing
    * ===================================================================== */
   const policy = await api<{ demo_window_seconds: number | null }>('/api/policy');
