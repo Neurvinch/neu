@@ -21,6 +21,39 @@ export function hardwareAvailable(): boolean {
   return typeof window !== 'undefined' && !!window.PublicKeyCredential;
 }
 
+/**
+ * What can answer a challenge right now, without prompting anybody.
+ *
+ * This is the honest ceiling on "is the hardware near". The browser will tell
+ * you whether a built-in authenticator exists and whether a credential could be
+ * offered without a modal. It will not tell you that a specific YubiKey is in
+ * the room, and no web API will -- so the UI promises exactly this much and no
+ * more: whether one touch is likely to be enough.
+ */
+export interface HardwarePresence {
+  /** WebAuthn exists in this browser at all. */
+  supported: boolean;
+  /** A built-in authenticator (Windows Hello, Touch ID) is usable. */
+  platformAuthenticator: boolean;
+  /**
+   * The browser can surface a stored credential inline. In practice this means
+   * a passkey is already within reach, so approval is one gesture away.
+   */
+  credentialReady: boolean;
+}
+
+export async function hardwarePresence(): Promise<HardwarePresence> {
+  if (!hardwareAvailable()) {
+    return { supported: false, platformAuthenticator: false, credentialReady: false };
+  }
+  const [platformAuthenticator, credentialReady] = await Promise.all([
+    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false),
+    window.PublicKeyCredential.isConditionalMediationAvailable?.().catch(() => false) ??
+      Promise.resolve(false),
+  ]);
+  return { supported: true, platformAuthenticator, credentialReady };
+}
+
 export async function platformAuthenticatorAvailable(): Promise<boolean> {
   if (!hardwareAvailable()) return false;
   try {
@@ -73,6 +106,11 @@ export function createHardwareSigner(params: {
         alg: 'WebAuthn',
         binding: 'hardware',
         device_kind: 'hardware',
+        // Reported by the browser, verified by nothing -- so the server treats
+        // it as a label on the evidence, never as a reason to accept anything.
+        attachment:
+          (assertion as { authenticatorAttachment?: 'platform' | 'cross-platform' })
+            .authenticatorAttachment ?? null,
         response: {
           id: assertion.id,
           rawId: assertion.rawId,
