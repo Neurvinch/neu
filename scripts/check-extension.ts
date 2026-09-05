@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { approveEnrollments, enroll, api, type Device } from './lib.js';
+import { approveEnrollments, enroll, api, login, type Device } from './lib.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUNDLE = path.join(root, 'packages/extension/dist/background.js');
@@ -414,9 +414,43 @@ async function main() {
       }),
   );
 
+  // Retiring a key has to reach the server, not just the browser. A key that
+  // is gone locally but still ACTIVE server-side is both still trusted and, for
+  // hardware, un-re-registrable.
+  const retiring = await send<{ credentialId: string }>({ type: 'STATE' });
   await send({ type: 'DESTROY_KEY' });
+
   const gone = await send<{ hasKey: boolean }>({ type: 'STATE' });
-  check('Destroying the key removes it from storage', !gone.hasKey);
+  check('Retiring the key removes it from local storage', !gone.hasKey);
+
+  const after = await api<{
+    credentials: Array<{ credential_id: string; state: string }>;
+  }>('/api/me', { token: (await login('u_vikram')).token });
+  const row = after.credentials.find((c) => c.credential_id === retiring.credentialId);
+  check(
+    'The server marks it REVOKED rather than leaving it trusted',
+    row?.state === 'REVOKED',
+    row?.state ?? 'absent',
+  );
+
+  const directory = JSON.parse(fs.readFileSync('data/key-directory.json', 'utf8')) as {
+    credentials: Record<string, unknown>;
+  };
+  check(
+    'The payment rail stops being told about it',
+    !directory.credentials[retiring.credentialId!],
+  );
+
+  const chain = await api<Array<{ type: string; payload: { credential_id?: string } }>>(
+    '/api/audit?limit=40',
+    { token: (await login('u_vikram')).token },
+  );
+  check(
+    'The retirement is in the audit chain',
+    chain.some(
+      (e) => e.type === 'CREDENTIAL_REVOKED' && e.payload.credential_id === retiring.credentialId,
+    ),
+  );
 
   console.log(
     failures === 0
