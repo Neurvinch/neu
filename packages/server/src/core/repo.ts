@@ -28,6 +28,7 @@ export interface CredentialRow {
   public_key: string;
   webauthn_id: string | null;
   aaguid: string | null;
+  transports: string;
   label: string | null;
   counter: number;
   state: 'PENDING' | 'ACTIVE' | 'REVOKED';
