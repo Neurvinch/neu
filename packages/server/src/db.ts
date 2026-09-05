@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS credentials (
   -- model identifier. Null for software credentials.
   webauthn_id   TEXT UNIQUE,
   aaguid        TEXT,
+  -- usb / nfc / ble / internal / hybrid. "hybrid" is a phone answering over a
+  -- Bluetooth proximity tunnel, so the protocol has already established the
+  -- device was in the room.
+  transports    TEXT NOT NULL DEFAULT '[]',
   label         TEXT,
   counter       INTEGER NOT NULL DEFAULT 0,
   state         TEXT NOT NULL CHECK (state IN ('PENDING','ACTIVE','REVOKED')),
