@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SigningRequest } from '@seal/shared';
 import { api } from '../api.js';
+import { hardwarePresence, type HardwarePresence } from '@seal/shared/hardware';
 import { localCredentials, signWith, type Credential } from '../lib/device.js';
 import type { Session } from './SignIn.js';
 
@@ -121,6 +122,11 @@ function RequestCard({
   const [passphrase, setPassphrase] = useState('');
   // Strongest custody first: if a hardware key is present it is the default.
   const [credential, setCredential] = useState<Credential>(credentials[0]);
+  const [presence, setPresence] = useState<HardwarePresence | null>(null);
+
+  useEffect(() => {
+    void hardwarePresence().then(setPresence);
+  }, []);
 
   useEffect(() => setLeft(request.seconds_remaining), [request.seconds_remaining]);
   useEffect(() => {
@@ -249,9 +255,30 @@ function RequestCard({
           />
         </label>
       ) : (
-        <p className="dim" style={{ fontSize: 13, marginTop: 14 }}>
-          Your authenticator will ask for a fingerprint, face or touch. The key never leaves it.
-        </p>
+        <>
+          {/*
+            The honest version of "the hardware is near". The browser can say a
+            built-in authenticator is usable; it cannot say a specific key is in
+            the room, and nothing here pretends otherwise. Crucially, presence
+            only ever shortens the path -- it never removes the gesture. A key
+            being nearby is not a decision.
+          */}
+          <div
+            className={`banner ${presence?.platformAuthenticator ? 'ok' : 'info'}`}
+            style={{ marginTop: 14, marginBottom: 0 }}
+          >
+            <div className="big">
+              {presence?.platformAuthenticator
+                ? 'Your authenticator is right here'
+                : 'Your authenticator will be asked for'}
+            </div>
+            <p>
+              {presence?.platformAuthenticator
+                ? 'One touch — a fingerprint, your face, or the button on your key — and this is signed. Nothing is approved until you make that gesture.'
+                : 'You will be prompted to present your key. The key never leaves the device it lives on.'}
+            </p>
+          </div>
+        </>
       )}
 
       {error ? <p className="error">{error}</p> : null}
