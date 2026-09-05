@@ -10,6 +10,7 @@ import {
   vault,
 } from '../lib/device.js';
 import { platformAuthenticatorAvailable } from '@seal/shared/hardware';
+import { Admissions, type Enrollment } from './Admissions.js';
 import type { Session } from './SignIn.js';
 
 interface Me {
@@ -43,6 +44,7 @@ export function Enrol({
   onChanged: () => void;
 }) {
   const { data: me } = useApi<Me>('/api/me', bump);
+  const { data: enrollments } = useApi<Enrollment[]>('/api/credentials/enrollments', bump);
   const [hasPlatform, setHasPlatform] = useState(false);
   const [busy, setBusy] = useState<null | 'software' | 'hardware'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +61,47 @@ export function Enrol({
   const hw = loadHardware(session.id);
   const serverState = (id: string) =>
     me?.credentials.find((c) => c.credential_id === id)?.state ?? 'not on server';
+
+  /**
+   * PENDING on its own is a dead end: it tells you nothing about what is
+   * missing or who can supply it. This looks up the actual request so the card
+   * can say "0 of 2, and here is who can sign".
+   */
+  const requestFor = (credentialId: string) =>
+    (enrollments ?? []).find((e) => e.credential_id === credentialId && e.state === 'PENDING');
+
+  /**
+   * Retire a key properly.
+   *
+   * Clearing local storage alone used to leave the server still trusting the
+   * credential -- so a key you believed was gone could still authorize, and the
+   * authenticator refused to register again because the server still listed it
+   * ("The authenticator was previously registered"). The server call has to
+   * come first, and local state is only wiped once it succeeds.
+   */
+  const retire = async (credentialId: string, kind: 'hardware' | 'software') => {
+    const label =
+      kind === 'hardware'
+        ? 'Retire this hardware key? It will stop being able to authorize anything, and you can enrol the same authenticator again afterwards.'
+        : 'Destroy this key? It cannot be recovered, and it will stop being able to authorize anything.';
+    if (!confirm(label)) return;
+
+    setError(null);
+    setNote(null);
+    try {
+      await api(`/api/credentials/${credentialId}/revoke`, {
+        body: { reason: 'Retired from the Authenticator' },
+      });
+      if (kind === 'hardware') forgetHardware(session.id);
+      else vault.forget(session.id);
+      setNote('Key retired. It can no longer authorize anything, and the payment rail has been told.');
+      onChanged();
+    } catch (e) {
+      setError(
+        `Could not retire the key on the server, so nothing was deleted here either: ${(e as Error).message}`,
+      );
+    }
+  };
 
   const describe = (result: { bootstrap_ceremony: boolean; required_approvals: number }) =>
     result.bootstrap_ceremony
@@ -192,6 +235,7 @@ export function Enrol({
             <div className="spacer" />
             <span className="badge">{serverState(hw.credential_id)}</span>
           </div>
+          <PendingNote request={requestFor(hw.credential_id)} />
           <dl className="facts">
             <dt>Credential</dt>
             <dd className="mono">{hw.credential_id}</dd>
@@ -202,16 +246,8 @@ export function Enrol({
               {me?.credentials.find((c) => c.credential_id === hw.credential_id)?.counter ?? 0}
             </dd>
           </dl>
-          <button
-            className="btn danger sm"
-            onClick={() => {
-              if (confirm('Forget this hardware key on this device?')) {
-                forgetHardware(session.id);
-                onChanged();
-              }
-            }}
-          >
-            Forget
+          <button className="btn danger sm" onClick={() => retire(hw.credential_id, 'hardware')}>
+            Retire this key
           </button>
         </div>
       ) : (
@@ -247,6 +283,7 @@ export function Enrol({
             <div className="spacer" />
             <span className="badge">{serverState(swVault.credential_id)}</span>
           </div>
+          <PendingNote request={requestFor(swVault.credential_id)} />
           <dl className="facts">
             <dt>Credential</dt>
             <dd className="mono">{swVault.credential_id}</dd>
@@ -260,12 +297,7 @@ export function Enrol({
           </dl>
           <button
             className="btn danger sm"
-            onClick={() => {
-              if (confirm('Delete this key? It cannot be recovered.')) {
-                vault.forget(session.id);
-                onChanged();
-              }
-            }}
+            onClick={() => retire(swVault.credential_id, 'software')}
           >
             Destroy this key
           </button>
@@ -303,6 +335,12 @@ export function Enrol({
         </div>
       )}
 
+      <Admissions
+        session={session}
+        enrollments={enrollments ?? []}
+        onChanged={onChanged}
+      />
+
       <div className="banner info">
         <div className="big">Why not just keep the key on the console?</div>
         <p>
@@ -312,5 +350,32 @@ export function Enrol({
         </p>
       </div>
     </>
+  );
+}
+
+/**
+ * What a PENDING key is actually waiting for.
+ *
+ * Registering a new key for an executive is the cheapest attack on this
+ * whole design -- far cheaper than forging a signature -- so a new key is
+ * admitted only by a quorum of people who already hold one. That is worth
+ * saying out loud at the moment somebody is looking at a badge that just
+ * says PENDING and wondering what went wrong.
+ */
+function PendingNote({ request }: { request?: Enrollment }) {
+  if (!request) return null;
+  const remaining = Math.max(0, request.required_approvals - request.approvals);
+  return (
+    <div className="banner warn" style={{ marginTop: 10, marginBottom: 0 }}>
+      <div className="big">
+        Waiting for {remaining} more approval{remaining === 1 ? '' : 's'}
+      </div>
+      <p>
+        {request.approvals} of {request.required_approvals} so far. Nothing is wrong — a new key
+        can only be admitted by executives who already hold one, because registering a key for
+        someone is easier than forging their signature. Ask another executive to open their
+        Authenticator; your key will appear under “Keys awaiting your approval”.
+      </p>
+    </div>
   );
 }
